@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { CodeEditor } from "./CodeEditor";
+import { CodePlayground } from "./CodePlayground";
 import { FeedbackPanel } from "./FeedbackPanel";
 import { Question } from "@/types";
 import { answersApi, testsApi } from "@/lib/api";
@@ -594,13 +595,25 @@ export function QuestionCard({
 
             {isCodeQuestion ? (
               <div className="space-y-4">
-                <CodeEditor
-                  value={code}
-                  onChange={setCode}
-                  language={question.category === "coding" ? "python" : "javascript"}
-                  readOnly={false}
-                  height="250px"
-                />
+                {question.category === "coding" ? (
+                  // Use CodePlayground with run capability for coding questions
+                  <CodePlayground
+                    initialCode={code}
+                    onChange={setCode}
+                    language="python"
+                    height="300px"
+                    showSampleData={true}
+                  />
+                ) : (
+                  // Use basic CodeEditor for code review (no execution needed)
+                  <CodeEditor
+                    value={code}
+                    onChange={setCode}
+                    language="javascript"
+                    readOnly={false}
+                    height="250px"
+                  />
+                )}
                 <Textarea
                   placeholder="Explain your solution..."
                   value={answer}

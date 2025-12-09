@@ -1,0 +1,58 @@
+{
+  "metadata": {
+    "description": "Continuous glucose monitoring data with meal events",
+    "sampling_interval_minutes": 5,
+    "duration_hours": 24,
+    "device": "KOS Argus CGM (Non-invasive)",
+    "units": "mg/dL",
+    "subject_info": {
+      "type": "Type 2 Diabetic",
+      "age_group": "adult",
+      "medication": "metformin"
+    }
+  },
+  "glucose_readings": {
+    "timestamps_hours": [
+      0.0, 0.083, 0.167, 0.25, 0.333, 0.417, 0.5, 0.583, 0.667, 0.75,
+      0.833, 0.917, 1.0, 1.083, 1.167, 1.25, 1.333, 1.417, 1.5, 1.583,
+      1.667, 1.75, 1.833, 1.917, 2.0, 2.083, 2.167, 2.25, 2.333, 2.417,
+      2.5, 2.583, 2.667, 2.75, 2.833, 2.917, 3.0, 3.083, 3.167, 3.25,
+      3.333, 3.417, 3.5, 3.583, 3.667, 3.75, 3.833, 3.917, 4.0
+    ],
+    "glucose_mg_dl": [
+      95, 94, 93, 95, 98, 105, 118, 135, 155, 172,
+      185, 192, 195, 193, 188, 180, 170, 158, 148, 138,
+      130, 124, 118, 114, 110, 108, 106, 105, 104, 104,
+      103, 103, 102, 102, 102, 101, 101, 100, 100, 99,
+      99, 98, 98, 97, 97, 96, 96, 95, 95
+    ]
+  },
+  "events": {
+    "meals": [
+      {
+        "time_hours": 0.5,
+        "type": "breakfast",
+        "carbs_grams": 45,
+        "description": "Toast with jam, orange juice"
+      }
+    ],
+    "exercise": [],
+    "insulin": []
+  },
+  "derived_metrics": {
+    "time_in_range_70_180": 0.85,
+    "time_above_180": 0.10,
+    "time_below_70": 0.05,
+    "average_glucose": 125,
+    "glucose_variability_cv": 0.22,
+    "peak_glucose": 195,
+    "peak_time_hours": 1.0
+  },
+  "challenge_tasks": [
+    "Calculate the area under the curve (AUC) for the post-meal glucose response",
+    "Estimate the time to peak glucose after the meal",
+    "Implement a simple glucose prediction algorithm using linear extrapolation",
+    "Calculate the rate of glucose change (mg/dL per minute) at each time point",
+    "Detect hyperglycemic episodes (glucose > 180 mg/dL)"
+  ]
+}

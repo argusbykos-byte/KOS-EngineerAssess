@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.routes import candidates, tests, questions, answers, reports, challenges, feedback
+from app.api.routes import candidates, tests, questions, answers, reports, challenges, feedback, code
 
 api_router = APIRouter()
 
@@ -10,3 +10,4 @@ api_router.include_router(answers.router, prefix="/answers", tags=["answers"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(challenges.router, prefix="/challenges", tags=["challenges"])
 api_router.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
+api_router.include_router(code.router, prefix="/code", tags=["code"])

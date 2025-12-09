@@ -459,6 +459,220 @@
         "sample_strong_answer": "Key insight: If first egg breaks, we must check linearly with second egg. Use decreasing intervals.\n\nLet n = max drops. First drop at floor n. If breaks, check floors 1 to n-1 (n-1 more drops, total n).\nIf survives, next drop at n + (n-1). Pattern continues.\n\nNeed: n + (n-1) + (n-2) + ... + 1 ≥ 100\nn(n+1)/2 ≥ 100\nn ≥ 13.7, so n = 14\n\nDrop sequence: 14, 27, 39, 50, 60, 69, 77, 84, 90, 95, 99, 100\nWorst case: 14 drops guaranteed.",
         "follow_up": "What if you had 3 eggs?",
         "follow_up_answer": "With 3 eggs, use similar logic but can afford binary-like search until down to 2 eggs. Answer is 9 drops for 100 floors."
+      },
+      {
+        "id": "bt_7",
+        "title": "Probability of Consecutive Heads",
+        "category": "math_calculation",
+        "difficulty": ["easy", "medium"],
+        "question_text": "You flip a fair coin repeatedly until you get two consecutive heads (HH). What is the expected number of flips needed?",
+        "rubric": {
+          "problem_setup": {
+            "points": 3,
+            "criteria": [
+              {"description": "Identifies this as a Markov chain / state-based problem", "points": 1},
+              {"description": "Correctly defines states (Start, H, HH)", "points": 1},
+              {"description": "Sets up recurrence relations", "points": 1}
+            ]
+          },
+          "calculation": {
+            "points": 4,
+            "criteria": [
+              {"description": "Writes correct equations: E[Start] = 1 + 0.5*E[H] + 0.5*E[Start]", "points": 2},
+              {"description": "Correctly solves: E[H] = 1 + 0.5*0 + 0.5*E[Start]", "points": 1},
+              {"description": "Gets correct answer: 6 flips", "points": 1}
+            ]
+          },
+          "explanation": {
+            "points": 3,
+            "criteria": [
+              {"description": "Explains intuition behind state transitions", "points": 1},
+              {"description": "Can verify answer or provide alternative approach", "points": 1},
+              {"description": "Clear mathematical reasoning", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "This is a Markov chain problem with states:\n- S: Start (or just got T)\n- H: Just got one H\n- HH: Done (absorbing state)\n\nLet E[S] = expected flips from S, E[H] = expected flips from H.\n\nFrom S: flip once, get H with prob 0.5 (go to H), get T with prob 0.5 (stay at S)\nE[S] = 1 + 0.5*E[H] + 0.5*E[S]\n\nFrom H: flip once, get H with prob 0.5 (done!), get T with prob 0.5 (back to S)\nE[H] = 1 + 0.5*0 + 0.5*E[S]\n\nSolving: E[H] = 1 + 0.5*E[S]\nSubstitute: E[S] = 1 + 0.5*(1 + 0.5*E[S]) + 0.5*E[S]\nE[S] = 1 + 0.5 + 0.25*E[S] + 0.5*E[S]\n0.25*E[S] = 1.5\nE[S] = 6\n\nExpected number of flips is 6.",
+        "follow_up": "What if we wanted three consecutive heads (HHH)?",
+        "follow_up_answer": "Similar approach with 3 states. Answer is 14 flips. General formula for n consecutive heads: 2^(n+1) - 2."
+      },
+      {
+        "id": "bt_8",
+        "title": "The Monty Hall Variant",
+        "category": "math_calculation",
+        "difficulty": ["medium"],
+        "question_text": "In a variant of the Monty Hall problem, there are 100 doors. Behind one door is a car, behind the rest are goats. You pick door #1. The host, who knows what's behind each door, opens 98 doors showing goats, leaving only your door and door #57 closed. Should you switch to door #57? What is the probability of winning if you switch?",
+        "rubric": {
+          "understanding": {
+            "points": 3,
+            "criteria": [
+              {"description": "Recognizes this amplifies the Monty Hall effect", "points": 1},
+              {"description": "Understands host's knowledge is key", "points": 1},
+              {"description": "Correctly identifies that switching is better", "points": 1}
+            ]
+          },
+          "calculation": {
+            "points": 4,
+            "criteria": [
+              {"description": "Calculates initial probability: 1/100 for your door", "points": 1},
+              {"description": "Recognizes remaining probability concentrates on #57", "points": 2},
+              {"description": "Gets correct answer: 99/100 = 99%", "points": 1}
+            ]
+          },
+          "explanation": {
+            "points": 3,
+            "criteria": [
+              {"description": "Explains why probability doesn't redistribute equally", "points": 1},
+              {"description": "Uses conditional probability reasoning", "points": 1},
+              {"description": "Can extend reasoning to general case", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "Yes, definitely switch!\n\nInitial probability your door has car: 1/100\nInitial probability car is behind one of the other 99 doors: 99/100\n\nThe host opening 98 goat doors doesn't change these probabilities—it just concentrates the 99/100 probability onto the one remaining door (#57).\n\nP(car behind #1) = 1/100 = 1%\nP(car behind #57) = 99/100 = 99%\n\nSwitching gives you 99% chance of winning vs. 1% if you stay.\n\nThis is the same logic as the 3-door Monty Hall (33% vs 67%), but with 100 doors the effect is much more dramatic. The host's action of revealing goats transfers probability from those doors to the remaining unchosen door.",
+        "follow_up": "What if the host opened doors randomly (might reveal the car)?",
+        "follow_up_answer": "If host opens randomly and happens to show only goats, switching doesn't help—both remaining doors have 50% probability. The host's knowledge is crucial to the Monty Hall effect."
+      },
+      {
+        "id": "bt_9",
+        "title": "Birthday Problem Variant",
+        "category": "math_calculation",
+        "difficulty": ["easy", "medium"],
+        "question_text": "In a room of 30 people, what is the probability that at least two people share the same birthday? (Assume 365 days, ignore leap years, and uniform distribution of birthdays.)",
+        "rubric": {
+          "approach": {
+            "points": 3,
+            "criteria": [
+              {"description": "Uses complement: P(at least 2 same) = 1 - P(all different)", "points": 2},
+              {"description": "Understands why direct calculation is harder", "points": 1}
+            ]
+          },
+          "calculation": {
+            "points": 4,
+            "criteria": [
+              {"description": "Sets up product: (365/365) × (364/365) × ... × (336/365)", "points": 2},
+              {"description": "Gets approximately 0.706 or 70.6%", "points": 2}
+            ]
+          },
+          "intuition": {
+            "points": 3,
+            "criteria": [
+              {"description": "Explains why result is counterintuitively high", "points": 1},
+              {"description": "Notes there are 30C2 = 435 pairs to compare", "points": 1},
+              {"description": "Can discuss threshold (23 people for 50%)", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "Use the complement: P(at least 2 share) = 1 - P(all different)\n\nP(all different) = (365/365) × (364/365) × (363/365) × ... × (336/365)\n= 365! / (335! × 365^30)\n\nCalculating:\n= (365 × 364 × 363 × ... × 336) / 365^30\n≈ 0.294\n\nSo P(at least 2 share) ≈ 1 - 0.294 = 0.706 or about 70.6%\n\nThis seems high because with 30 people, there are 30C2 = 435 pairs, giving many opportunities for a match. The 50% threshold is just 23 people.",
+        "follow_up": "How many people do you need for a 99% probability of a shared birthday?",
+        "follow_up_answer": "You need 57 people for 99% probability. The formula is approximately n ≈ √(2 × 365 × ln(1/(1-p))) for probability p."
+      },
+      {
+        "id": "bt_10",
+        "title": "Expected Value of Maximum",
+        "category": "math_calculation",
+        "difficulty": ["medium", "hard"],
+        "question_text": "You roll a fair 6-sided die 3 times. What is the expected value of the maximum of the three rolls?",
+        "rubric": {
+          "approach": {
+            "points": 3,
+            "criteria": [
+              {"description": "Uses P(max ≤ k) or P(max = k) approach", "points": 2},
+              {"description": "Recognizes this requires inclusion-exclusion or CDF method", "points": 1}
+            ]
+          },
+          "calculation": {
+            "points": 4,
+            "criteria": [
+              {"description": "Correctly computes P(max = k) = (k/6)^3 - ((k-1)/6)^3", "points": 2},
+              {"description": "Sets up E[max] = Σ k × P(max = k)", "points": 1},
+              {"description": "Gets correct answer: 119/24 ≈ 4.958", "points": 1}
+            ]
+          },
+          "verification": {
+            "points": 3,
+            "criteria": [
+              {"description": "Shows work clearly", "points": 1},
+              {"description": "Can verify reasonableness (> 3.5, < 6)", "points": 1},
+              {"description": "Alternative: uses E[max] = Σ P(max ≥ k)", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "P(max ≤ k) = (k/6)^3 (all three rolls ≤ k)\nP(max = k) = P(max ≤ k) - P(max ≤ k-1) = (k/6)^3 - ((k-1)/6)^3\n\nCalculate for each k:\nP(max=1) = (1/6)^3 - 0 = 1/216\nP(max=2) = (2/6)^3 - (1/6)^3 = 8/216 - 1/216 = 7/216\nP(max=3) = 27/216 - 8/216 = 19/216\nP(max=4) = 64/216 - 27/216 = 37/216\nP(max=5) = 125/216 - 64/216 = 61/216\nP(max=6) = 216/216 - 125/216 = 91/216\n\nE[max] = 1×(1/216) + 2×(7/216) + 3×(19/216) + 4×(37/216) + 5×(61/216) + 6×(91/216)\n= (1 + 14 + 57 + 148 + 305 + 546)/216 = 1071/216 = 119/24 ≈ 4.958\n\nThis is higher than the single-roll expected value of 3.5, which makes sense since we're taking the maximum.",
+        "follow_up": "What about the expected minimum of three rolls?",
+        "follow_up_answer": "By symmetry: E[min] = 7 - E[max] = 7 - 119/24 = 49/24 ≈ 2.042. Or compute directly using P(min ≥ k)."
+      },
+      {
+        "id": "bt_11",
+        "title": "Ant on a Triangle",
+        "category": "math_calculation",
+        "difficulty": ["easy", "medium"],
+        "question_text": "An ant starts at one vertex of an equilateral triangle. Each second, it randomly moves to one of the two adjacent vertices with equal probability. What is the expected number of seconds for the ant to return to its starting vertex?",
+        "rubric": {
+          "setup": {
+            "points": 3,
+            "criteria": [
+              {"description": "Identifies states: Start, Other1, Other2", "points": 1},
+              {"description": "Recognizes symmetry: Other1 and Other2 are equivalent", "points": 1},
+              {"description": "Sets up recurrence relations", "points": 1}
+            ]
+          },
+          "calculation": {
+            "points": 4,
+            "criteria": [
+              {"description": "Let E = expected return time from Start", "points": 1},
+              {"description": "E = 1 + 0.5*E_other + 0.5*E_other where E_other is from other vertex", "points": 1},
+              {"description": "E_other = 1 + 0.5*0 + 0.5*E (return or go to third vertex)", "points": 1},
+              {"description": "Gets correct answer: 3 seconds", "points": 1}
+            ]
+          },
+          "explanation": {
+            "points": 3,
+            "criteria": [
+              {"description": "Clear state transition reasoning", "points": 1},
+              {"description": "Explains symmetry simplification", "points": 1},
+              {"description": "Can extend to other polygons", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "By symmetry, let E = expected return time from start, and E' = expected time to reach start from either other vertex.\n\nFrom Start: move to either adjacent vertex (prob 1 each)\nE = 1 + E' (must move, then return from other vertex)\n\nFrom Other vertex: 0.5 chance to return to Start, 0.5 chance to go to third vertex\nE' = 1 + 0.5×0 + 0.5×E'\nE' = 1 + 0.5×E'\n0.5×E' = 1\nE' = 2\n\nTherefore: E = 1 + E' = 1 + 2 = 3\n\nExpected return time is 3 seconds.\n\nAlternatively: By theory of random walks on graphs, expected return time equals n (number of vertices) for a symmetric random walk. Here n=3, confirming our answer.",
+        "follow_up": "What if it's a square instead of a triangle?",
+        "follow_up_answer": "For a square (4 vertices), expected return time is 4 seconds. For any regular n-gon with movement to adjacent vertices only, expected return time is n."
+      },
+      {
+        "id": "bt_12",
+        "title": "Coupon Collector Problem",
+        "category": "math_calculation",
+        "difficulty": ["medium", "hard"],
+        "question_text": "A cereal box contains one of 5 different collectible cards, each equally likely. On average, how many boxes do you need to buy to collect all 5 different cards?",
+        "rubric": {
+          "understanding": {
+            "points": 3,
+            "criteria": [
+              {"description": "Recognizes this as coupon collector problem", "points": 1},
+              {"description": "Understands geometric distribution for each new card", "points": 1},
+              {"description": "Breaks into stages: 1st card, 2nd unique, etc.", "points": 1}
+            ]
+          },
+          "calculation": {
+            "points": 4,
+            "criteria": [
+              {"description": "E[total] = E[1st] + E[2nd] + ... + E[5th]", "points": 1},
+              {"description": "E[k-th new card] = 5/(5-k+1)", "points": 2},
+              {"description": "Gets correct answer: 5(1 + 1/2 + 1/3 + 1/4 + 1/5) = 137/12 ≈ 11.42", "points": 1}
+            ]
+          },
+          "generalization": {
+            "points": 3,
+            "criteria": [
+              {"description": "Can express general formula: n × H_n", "points": 1},
+              {"description": "Explains harmonic series connection", "points": 1},
+              {"description": "Discusses variance or confidence bounds", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "Break into stages based on how many unique cards we have:\n\nStage 1: Need 1st unique card → P=5/5=1, E[boxes]=1\nStage 2: Need 2nd unique card → P=4/5, E[boxes]=5/4\nStage 3: Need 3rd unique card → P=3/5, E[boxes]=5/3\nStage 4: Need 4th unique card → P=2/5, E[boxes]=5/2\nStage 5: Need 5th unique card → P=1/5, E[boxes]=5/1\n\nE[total] = 1 + 5/4 + 5/3 + 5/2 + 5/1\n= 5(1/5 + 1/4 + 1/3 + 1/2 + 1)\n= 5(1 + 1/2 + 1/3 + 1/4 + 1/5)\n= 5 × H_5\n= 5 × (60 + 30 + 20 + 15 + 12)/60\n= 5 × 137/60\n= 137/12 ≈ 11.42 boxes\n\nGeneral formula: For n cards, E = n × H_n ≈ n × (ln(n) + γ) where γ ≈ 0.5772 is Euler's constant.",
+        "follow_up": "What's the probability of collecting all 5 cards in exactly 10 boxes?",
+        "follow_up_answer": "Use inclusion-exclusion: P(all 5 in n boxes) = Σ(-1)^k × C(5,k) × ((5-k)/5)^n. For n=10: ≈ 0.153 or about 15.3%."
       }
     ]
   },
@@ -3279,5 +3493,310 @@
         }
       ]
     }
+  },
+  "general_ml_questions": {
+    "description": "General AI/ML fundamental questions applicable to all candidates with ML background",
+    "questions": [
+      {
+        "id": "gml_1",
+        "title": "Bias-Variance Tradeoff",
+        "category": "ml_fundamentals",
+        "difficulty": ["easy", "medium"],
+        "question_text": "Explain the bias-variance tradeoff in machine learning. How do you identify whether your model suffers from high bias or high variance, and what strategies would you use to address each?",
+        "rubric": {
+          "conceptual_understanding": {
+            "points": 4,
+            "criteria": [
+              {"description": "Correctly defines bias (underfitting) and variance (overfitting)", "points": 2},
+              {"description": "Explains the tradeoff between them", "points": 1},
+              {"description": "Discusses total error decomposition", "points": 1}
+            ]
+          },
+          "diagnosis": {
+            "points": 3,
+            "criteria": [
+              {"description": "Identifies high bias: poor training AND validation performance", "points": 1},
+              {"description": "Identifies high variance: good training, poor validation", "points": 1},
+              {"description": "Mentions learning curves as diagnostic tool", "points": 1}
+            ]
+          },
+          "solutions": {
+            "points": 3,
+            "criteria": [
+              {"description": "For high bias: more features, complex models, longer training", "points": 1},
+              {"description": "For high variance: regularization, more data, simpler models", "points": 1},
+              {"description": "Mentions cross-validation or ensemble methods", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**Bias-Variance Tradeoff:**\n\nTotal Error = Bias² + Variance + Irreducible Noise\n\n**Bias:** Error from overly simplistic assumptions. High bias means the model can't capture the true pattern (underfitting).\n\n**Variance:** Error from sensitivity to small fluctuations in training data. High variance means the model fits noise (overfitting).\n\n**Diagnosis:**\n- High Bias: Both training and validation errors are high. Learning curve shows training error plateaus at high value.\n- High Variance: Training error is low, but validation error is much higher. Gap between training and validation curves.\n\n**Solutions:**\n\n*For High Bias:*\n- Add more features / feature engineering\n- Use more complex model architecture\n- Reduce regularization\n- Train longer / more epochs\n\n*For High Variance:*\n- Get more training data\n- Apply regularization (L1/L2, dropout)\n- Feature selection / dimensionality reduction\n- Use simpler model\n- Ensemble methods (bagging reduces variance)\n- Cross-validation for hyperparameter tuning",
+        "follow_up": "How does ensemble learning (bagging vs boosting) relate to bias-variance?",
+        "follow_up_answer": "Bagging (e.g., Random Forest) reduces variance by averaging independent models trained on bootstrapped samples. Boosting (e.g., XGBoost) reduces bias by sequentially training models to correct predecessor errors. Bagging works well with high-variance base learners; boosting works well with high-bias base learners."
+      },
+      {
+        "id": "gml_2",
+        "title": "Gradient Descent Variants",
+        "category": "ml_fundamentals",
+        "difficulty": ["easy", "medium"],
+        "question_text": "Compare and contrast Batch Gradient Descent, Stochastic Gradient Descent (SGD), and Mini-batch Gradient Descent. When would you use each, and what are the tradeoffs?",
+        "rubric": {
+          "understanding": {
+            "points": 4,
+            "criteria": [
+              {"description": "Correctly describes batch GD (uses all data)", "points": 1},
+              {"description": "Correctly describes SGD (one sample at a time)", "points": 1},
+              {"description": "Correctly describes mini-batch (subset of data)", "points": 1},
+              {"description": "Understands the gradient estimation tradeoff", "points": 1}
+            ]
+          },
+          "tradeoffs": {
+            "points": 4,
+            "criteria": [
+              {"description": "Discusses convergence stability vs speed", "points": 1},
+              {"description": "Mentions memory requirements", "points": 1},
+              {"description": "Discusses noise in gradient estimates", "points": 1},
+              {"description": "Mentions hardware utilization (GPU batching)", "points": 1}
+            ]
+          },
+          "practical": {
+            "points": 2,
+            "criteria": [
+              {"description": "Recommends typical batch sizes (32-256)", "points": 1},
+              {"description": "Mentions learning rate considerations", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**Comparison:**\n\n| Aspect | Batch GD | SGD | Mini-batch |\n|--------|----------|-----|------------|\n| Samples/update | All N | 1 | k (32-256) |\n| Gradient noise | None | High | Medium |\n| Convergence | Smooth | Noisy | Balanced |\n| Memory | O(N) | O(1) | O(k) |\n| Updates/epoch | 1 | N | N/k |\n| GPU utilization | Good | Poor | Best |\n\n**Batch GD:**\n- Exact gradient, smooth convergence\n- Can't fit large datasets in memory\n- Slow updates, may get stuck in local minima\n\n**SGD:**\n- Very noisy gradient estimate\n- Can escape local minima (noise helps exploration)\n- Poor hardware utilization\n- Requires careful learning rate scheduling\n\n**Mini-batch GD (most common):**\n- Good balance of noise and stability\n- Efficient GPU utilization (parallel computation)\n- Typical batch size: 32-256\n- Noise can help generalization",
+        "follow_up": "What is the role of momentum in SGD, and how does Adam optimizer improve on vanilla SGD?",
+        "follow_up_answer": "Momentum accumulates past gradients to dampen oscillations and accelerate in consistent directions (like a ball rolling downhill). Adam combines momentum (first moment) with RMSprop (second moment / adaptive learning rates), scaling learning rates per parameter based on gradient history. Adam typically converges faster and requires less tuning than vanilla SGD+momentum."
+      },
+      {
+        "id": "gml_3",
+        "title": "Regularization Techniques",
+        "category": "ml_fundamentals",
+        "difficulty": ["easy", "medium"],
+        "question_text": "Explain L1 (Lasso) and L2 (Ridge) regularization. What are the mathematical differences, and when would you prefer one over the other? Also explain dropout for neural networks.",
+        "rubric": {
+          "mathematical": {
+            "points": 4,
+            "criteria": [
+              {"description": "Correctly states L1 penalty: sum of |w|", "points": 1},
+              {"description": "Correctly states L2 penalty: sum of w squared", "points": 1},
+              {"description": "Explains L1 promotes sparsity (zero weights)", "points": 1},
+              {"description": "Explains L2 shrinks weights but not to zero", "points": 1}
+            ]
+          },
+          "practical": {
+            "points": 3,
+            "criteria": [
+              {"description": "L1 for feature selection", "points": 1},
+              {"description": "L2 when all features may be relevant", "points": 1},
+              {"description": "Elastic Net as combination", "points": 1}
+            ]
+          },
+          "dropout": {
+            "points": 3,
+            "criteria": [
+              {"description": "Randomly zeros neurons during training", "points": 1},
+              {"description": "Acts as ensemble of sub-networks", "points": 1},
+              {"description": "Prevents co-adaptation of neurons", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**L1 (Lasso) Regularization:**\n- Penalty: lambda times sum of absolute weights\n- Adds diamond constraint in weight space\n- Promotes sparsity: many weights become exactly 0\n- Useful for feature selection\n\n**L2 (Ridge) Regularization:**\n- Penalty: lambda times sum of squared weights\n- Adds circular constraint in weight space\n- Shrinks weights toward zero but not exactly zero\n- All features retained (with reduced magnitude)\n\n**When to use:**\n- L1: Suspect many irrelevant features, want automatic feature selection\n- L2: All features likely relevant, just want to prevent overfitting\n- Elastic Net (L1+L2): Groups of correlated features\n\n**Dropout:**\n- Randomly set p% of neurons to 0 during training\n- Typical p: 0.2-0.5\n- At inference, scale weights by (1-p) or use inverted dropout\n- Effect: trains ensemble of 2^n sub-networks\n- Prevents co-adaptation: neurons can't rely on specific others",
+        "follow_up": "What is batch normalization, and how does it interact with dropout?",
+        "follow_up_answer": "Batch norm normalizes layer inputs to zero mean and unit variance, using learned scale/shift parameters. It reduces internal covariate shift and allows higher learning rates. Batch norm + dropout can conflict because dropout changes the statistics batch norm expects. In practice: use one or the other, or apply dropout after batch norm, or use layer norm instead."
+      },
+      {
+        "id": "gml_4",
+        "title": "Imbalanced Datasets",
+        "category": "ml_fundamentals",
+        "difficulty": ["medium"],
+        "question_text": "You're building a fraud detection model where only 1% of transactions are fraudulent. What problems arise from this class imbalance, and what techniques would you use to address them? What metrics would you use to evaluate the model?",
+        "rubric": {
+          "problem_understanding": {
+            "points": 3,
+            "criteria": [
+              {"description": "Identifies accuracy paradox (99% accuracy by predicting all negative)", "points": 1},
+              {"description": "Explains model bias toward majority class", "points": 1},
+              {"description": "Notes rare class signal is weak", "points": 1}
+            ]
+          },
+          "techniques": {
+            "points": 4,
+            "criteria": [
+              {"description": "Resampling: SMOTE, oversampling, undersampling", "points": 1},
+              {"description": "Class weights in loss function", "points": 1},
+              {"description": "Threshold tuning", "points": 1},
+              {"description": "Anomaly detection approach", "points": 1}
+            ]
+          },
+          "metrics": {
+            "points": 3,
+            "criteria": [
+              {"description": "Precision, Recall, F1 for positive class", "points": 1},
+              {"description": "AUC-ROC and AUC-PR curves", "points": 1},
+              {"description": "Confusion matrix analysis", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**Problems with 1% Positive Class:**\n\n1. Accuracy Paradox: A model predicting 'not fraud' always achieves 99% accuracy\n2. Class Dominance: Gradient updates dominated by majority class\n3. Poor Minority Recall: Model learns to ignore rare positive cases\n\n**Techniques:**\n\n*Data-Level:*\n- Oversampling: SMOTE (Synthetic Minority Over-sampling)\n- Undersampling: Random or informed (NearMiss)\n- Hybrid: SMOTE + Tomek links\n\n*Algorithm-Level:*\n- Class weights in loss function\n- Cost-sensitive learning\n- Focal Loss\n\n*Threshold Tuning:*\n- Don't use default 0.5 threshold\n- Tune based on business cost of FP vs FN\n\n**Evaluation Metrics:**\n- Precision: fraud predictions that are correct\n- Recall: frauds we actually caught\n- F1: Harmonic mean of precision/recall\n- AUC-PR: Area under precision-recall curve (better for imbalance)\n- AUC-ROC: Area under ROC curve\n\n**For fraud: Prioritize recall** (catch more fraud) but monitor precision (false alarms cost).",
+        "follow_up": "How would you set the classification threshold in production?",
+        "follow_up_answer": "1) Define business cost: C_FP (investigating false alarm) vs C_FN (missed fraud). 2) Calculate expected cost at each threshold. 3) Choose threshold minimizing expected cost. 4) Use precision-recall curve to find threshold meeting minimum recall requirement. 5) A/B test in production."
+      },
+      {
+        "id": "gml_5",
+        "title": "Cross-Validation Strategies",
+        "category": "ml_fundamentals",
+        "difficulty": ["easy", "medium"],
+        "question_text": "Explain k-fold cross-validation and its purpose. When would you use stratified k-fold, time-series cross-validation, or group k-fold instead?",
+        "rubric": {
+          "basic_cv": {
+            "points": 3,
+            "criteria": [
+              {"description": "Correctly explains k-fold process", "points": 1},
+              {"description": "Understands purpose: robust performance estimate", "points": 1},
+              {"description": "Mentions typical k values (5, 10)", "points": 1}
+            ]
+          },
+          "variants": {
+            "points": 4,
+            "criteria": [
+              {"description": "Stratified: preserves class distribution", "points": 1},
+              {"description": "Time-series: respects temporal order, no future data leakage", "points": 1},
+              {"description": "Group: keeps related samples together", "points": 1},
+              {"description": "Leave-one-out: when data is very limited", "points": 1}
+            ]
+          },
+          "practical": {
+            "points": 3,
+            "criteria": [
+              {"description": "Identifies when each variant is needed", "points": 1},
+              {"description": "Discusses computational tradeoffs", "points": 1},
+              {"description": "Mentions nested CV for hyperparameter tuning", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**K-Fold Cross-Validation:**\n\n1. Split data into k equal parts\n2. Train on k-1 folds, validate on remaining fold\n3. Repeat k times, average performance\n4. Benefits: Every sample used for validation exactly once\n\n**Variants:**\n\n*Stratified K-Fold:*\n- Preserves class distribution in each fold\n- Use for: Classification with imbalanced classes\n\n*Time-Series CV:*\n- Training set always before validation set\n- Use for: Forecasting, time-dependent data\n- Prevents future data leaking into training\n\n*Group K-Fold:*\n- Keeps all samples from same group together\n- Use for: Patient data, user data, repeated measurements\n- Prevents data leakage when samples are correlated\n\n*Leave-One-Out (LOO):*\n- k = N (each sample is one fold)\n- Use for: Very small datasets\n- Computationally expensive, high variance estimate\n\n**Nested CV:** For unbiased performance estimate with hyperparameter tuning:\n- Outer loop: model evaluation\n- Inner loop: hyperparameter selection",
+        "follow_up": "What is data leakage and how does it relate to cross-validation?",
+        "follow_up_answer": "Data leakage occurs when information from outside the training data is used to create the model. In CV context: 1) Feature engineering before split (e.g., scaling with full data), 2) Not respecting temporal order, 3) Not grouping related samples. Fix: do all preprocessing inside the CV loop, use appropriate CV variant."
+      },
+      {
+        "id": "gml_6",
+        "title": "Neural Network Architecture",
+        "category": "deep_learning",
+        "difficulty": ["medium", "hard"],
+        "question_text": "Compare CNNs, RNNs/LSTMs, and Transformers. What types of data and tasks is each architecture best suited for, and what are their key limitations?",
+        "rubric": {
+          "cnn_understanding": {
+            "points": 3,
+            "criteria": [
+              {"description": "Explains convolutional layers and spatial hierarchy", "points": 1},
+              {"description": "Mentions translation invariance / weight sharing", "points": 1},
+              {"description": "Suitable for: images, spectrograms, grids", "points": 1}
+            ]
+          },
+          "rnn_understanding": {
+            "points": 3,
+            "criteria": [
+              {"description": "Explains sequential processing and hidden state", "points": 1},
+              {"description": "Discusses vanishing gradient and LSTM solution", "points": 1},
+              {"description": "Suitable for: sequences, time series, text", "points": 1}
+            ]
+          },
+          "transformer_understanding": {
+            "points": 4,
+            "criteria": [
+              {"description": "Explains self-attention mechanism", "points": 1},
+              {"description": "Mentions parallel processing advantage", "points": 1},
+              {"description": "Discusses positional encodings", "points": 1},
+              {"description": "Notes computational complexity O(n^2)", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**CNNs:**\n*Best for:* Images, spectrograms, 1D/2D signals with local patterns\n*Key properties:* Local receptive fields, weight sharing, pooling\n*Limitations:* Fixed receptive field, poor at long-range dependencies\n\n**RNNs / LSTMs:**\n*Best for:* Sequential data, time series, text\n*Key properties:* Hidden state captures history, LSTM gates control information flow\n*Limitations:* Sequential processing (no parallelization), struggles with very long sequences\n\n**Transformers:**\n*Best for:* Text (BERT, GPT), increasingly images (ViT)\n*Key properties:* Self-attention for every position, fully parallel, captures long-range dependencies\n*Limitations:* O(n^2) attention complexity, no built-in inductive bias, memory intensive\n\n**When to use:**\n- Images: CNN (efficient) or ViT (if lots of data)\n- Short sequences: LSTM or Transformer\n- Long sequences: Transformers with efficient attention\n- Real-time inference: CNN or small LSTM",
+        "follow_up": "What is attention mechanism and how does multi-head attention improve on single attention?",
+        "follow_up_answer": "Attention computes weighted sum of values based on query-key similarity: Attention(Q,K,V) = softmax(QK^T/sqrt(d))V. Multi-head attention runs h parallel attention operations with different learned projections, then concatenates results. Benefits: learns different relationships (syntax, semantics), increases model capacity, more stable training."
+      },
+      {
+        "id": "gml_7",
+        "title": "Model Deployment Considerations",
+        "category": "mlops",
+        "difficulty": ["medium", "hard"],
+        "question_text": "You've trained a model that performs well on test data. What considerations and challenges arise when deploying this model to production? Discuss monitoring, versioning, and handling model drift.",
+        "rubric": {
+          "deployment_challenges": {
+            "points": 3,
+            "criteria": [
+              {"description": "Discusses latency/throughput requirements", "points": 1},
+              {"description": "Mentions model serialization and serving", "points": 1},
+              {"description": "Addresses infrastructure (GPU, scaling)", "points": 1}
+            ]
+          },
+          "monitoring": {
+            "points": 4,
+            "criteria": [
+              {"description": "Explains concept drift vs data drift", "points": 1},
+              {"description": "Discusses input validation and feature monitoring", "points": 1},
+              {"description": "Mentions prediction distribution monitoring", "points": 1},
+              {"description": "Describes alerting strategy", "points": 1}
+            ]
+          },
+          "versioning": {
+            "points": 3,
+            "criteria": [
+              {"description": "Model versioning and rollback", "points": 1},
+              {"description": "A/B testing or shadow deployment", "points": 1},
+              {"description": "Reproducibility: data + code + model", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**Deployment Challenges:**\n- Latency requirements (real-time vs batch)\n- Model optimization: quantization, pruning, distillation\n- Hardware: CPU vs GPU, edge vs cloud\n- Model serving (TorchServe, TF Serving, Triton)\n\n**Monitoring:**\n\n*Data Drift:* Input distribution changes\n- Monitor feature statistics\n- Compare to training distribution\n\n*Concept Drift:* Relationship between X and Y changes\n- Monitor prediction distribution\n- Track actual outcomes when available\n\n*Model Health:*\n- Prediction latency, error rates\n- GPU/memory utilization\n\n**Versioning:**\n- Version: data, code, model artifacts\n- Shadow deployment: new model runs in parallel\n- Canary: gradual traffic shift\n- A/B test: randomized comparison\n- Keep previous versions for rollback",
+        "follow_up": "How would you handle a model that needs retraining on new data periodically?",
+        "follow_up_answer": "1) Automated retraining pipeline triggered by schedule or drift detection. 2) Validate new model against holdout set before promotion. 3) Champion-challenger: new model must beat current. 4) Track lineage: which data trained which model. 5) Consider online learning if data arrives continuously."
+      },
+      {
+        "id": "gml_8",
+        "title": "Feature Engineering",
+        "category": "ml_fundamentals",
+        "difficulty": ["easy", "medium"],
+        "question_text": "What is feature engineering and why is it important? Describe common feature engineering techniques for numerical, categorical, and time-series data.",
+        "rubric": {
+          "importance": {
+            "points": 2,
+            "criteria": [
+              {"description": "Explains feature engineering importance for model performance", "points": 1},
+              {"description": "Mentions domain knowledge integration", "points": 1}
+            ]
+          },
+          "numerical": {
+            "points": 3,
+            "criteria": [
+              {"description": "Normalization/standardization", "points": 1},
+              {"description": "Binning, log transform, polynomial features", "points": 1},
+              {"description": "Handling outliers", "points": 1}
+            ]
+          },
+          "categorical": {
+            "points": 3,
+            "criteria": [
+              {"description": "One-hot encoding", "points": 1},
+              {"description": "Target encoding / frequency encoding", "points": 1},
+              {"description": "Embedding for high cardinality", "points": 1}
+            ]
+          },
+          "time_series": {
+            "points": 2,
+            "criteria": [
+              {"description": "Lag features, rolling statistics", "points": 1},
+              {"description": "Date/time decomposition (hour, day, month)", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**Feature Engineering:** Transforming raw data into features that better represent underlying patterns for ML models.\n\n**Importance:**\n- Often larger impact than model choice\n- Incorporates domain knowledge\n- Enables simpler models to perform well\n\n**Numerical Features:**\n- Standardization (z-score): Equal scale for gradient methods\n- Min-max normalization: Bounded [0,1] range\n- Log transform: Reduce skewness\n- Binning: Capture non-linear effects\n- Outlier clipping\n\n**Categorical Features:**\n- One-hot encoding: Low cardinality\n- Label encoding: Ordinal categories\n- Target encoding: High cardinality, regression\n- Frequency encoding: When frequency is informative\n- Embeddings: Very high cardinality (neural nets)\n\n**Time-Series Features:**\n- Lag features: x(t-1), x(t-2), ...\n- Rolling statistics: mean, std, min, max over window\n- Date features: hour, day_of_week, month, is_weekend\n- Trend features: moving average, exponential smoothing",
+        "follow_up": "What is feature selection and how does it differ from feature engineering?",
+        "follow_up_answer": "Feature engineering creates new features; feature selection chooses which features to keep. Selection methods: 1) Filter (correlation, mutual information), 2) Wrapper (forward/backward selection), 3) Embedded (L1 regularization, tree importance). Use selection to reduce overfitting, improve interpretability, and speed up training."
+      }
+    ]
   }
 }
