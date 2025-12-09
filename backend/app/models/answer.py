@@ -17,8 +17,18 @@ class Answer(Base):
     feedback = Column(Text, nullable=True)
     ai_evaluation = Column(Text, nullable=True)
 
+    # Draft vs final submission tracking
+    is_submitted = Column(Boolean, default=False)  # True when finally submitted, False for drafts
     submitted_at = Column(DateTime, nullable=True)
     evaluated_at = Column(DateTime, nullable=True)
+
+    # Version tracking for editable submissions
+    version = Column(Integer, default=1)  # Incremented on each edit after submission
+    previous_answer = Column(Text, nullable=True)  # Store previous version before edit
+    previous_code = Column(Text, nullable=True)
+    previous_score = Column(Float, nullable=True)  # Original score before re-submission
+    edit_count = Column(Integer, default=0)  # Number of times edited after submission
+    last_edited_at = Column(DateTime, nullable=True)
 
     # Time tracking
     time_spent_seconds = Column(Integer, nullable=True)

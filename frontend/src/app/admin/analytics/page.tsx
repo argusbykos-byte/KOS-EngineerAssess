@@ -10,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getCategoryLabel, getDifficultyLabel } from "@/lib/utils";
+import { getDifficultyLabel } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import {
   BarChart,

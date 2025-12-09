@@ -19,6 +19,7 @@ export interface TestSummary {
   start_time: string | null;
   end_time: string | null;
   overall_score: number | null;
+  created_at?: string;
 }
 
 export interface Test {
@@ -56,6 +57,9 @@ export interface Question {
   expected_answer?: string | null;
   answer?: Answer | null;
   created_at?: string;
+  // Draft auto-save fields
+  draft_answer?: string | null;
+  draft_code?: string | null;
 }
 
 export interface Answer {
@@ -70,6 +74,7 @@ export interface Answer {
   evaluated_at?: string | null;
   time_spent_seconds?: number | null;
   is_suspiciously_fast?: boolean | null;
+  previous_score?: number | null;
 }
 
 export interface Report {
@@ -116,3 +121,92 @@ export type QuestionCategory =
   | "code_review"
   | "system_design"
   | "signal_processing";
+
+// Challenge-based assessment types
+export type Track = "signal_processing" | "llm";
+
+export interface ChallengeTask {
+  id: string;
+  title: string;
+  description: string;
+  requirements: string[];
+}
+
+export interface AutoPresentation {
+  enabled: boolean;
+  sections: string[];
+}
+
+export interface ChallengeSpec {
+  track: Track;
+  title: string;
+  short_summary: string;
+  tasks: ChallengeTask[];
+  deliverables: string[];
+  auto_presentation: AutoPresentation;
+  estimated_time_hours: number;
+}
+
+export interface TaskResponse {
+  id: number;
+  task_id: string;
+  response_text: string | null;
+  response_code: string | null;
+  is_submitted: boolean;
+  submitted_at: string | null;
+  score: number | null;
+  feedback: string | null;
+  version: number;
+  edit_count: number;
+  previous_score: number | null;
+  needs_resubmit: boolean;
+}
+
+export interface Deliverable {
+  id: number;
+  deliverable_type: string;
+  title: string | null;
+  file_name: string | null;
+  content_type: string | null;
+  inline_content: string | null;
+  file_size_bytes: number | null;
+  created_at: string;
+}
+
+export interface ChallengeSubmission {
+  id: number;
+  test_id: number;
+  track: Track;
+  is_submitted: boolean;
+  submitted_at: string | null;
+  overall_score: number | null;
+  overall_feedback: string | null;
+  presentation_generated_at: string | null;
+  task_responses: TaskResponse[];
+  deliverables: Deliverable[];
+  created_at: string;
+}
+
+export interface PresentationSlide {
+  title: string;
+  content: string;
+  notes: string | null;
+}
+
+export interface PresentationData {
+  title: string;
+  candidate_name: string;
+  track: Track;
+  slides: PresentationSlide[];
+  generated_at: string | null;
+}
+
+// Extended test type with challenge support
+export interface TestWithChallenge extends Test {
+  candidate_name: string;
+  candidate_email: string;
+  track: Track | null;
+  challenge_spec: ChallengeSpec | null;
+  challenge_submission: ChallengeSubmission | null;
+  time_remaining_seconds: number | null;
+}

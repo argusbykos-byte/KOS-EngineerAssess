@@ -18,14 +18,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { testsApi, reportsApi } from "@/lib/api";
-import { Candidate } from "@/types";
+import { Candidate, TestSummary } from "@/types";
 import {
   getCategoryLabel,
   getDifficultyLabel,
   getScoreColor,
-  getRecommendationBadge,
 } from "@/lib/utils";
 import {
   Play,
@@ -38,6 +42,11 @@ import {
   Copy,
   Check,
   Link as LinkIcon,
+  ChevronDown,
+  ChevronRight,
+  Plus,
+  History,
+  Calendar,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -45,6 +54,35 @@ interface CandidateTableProps {
   candidates: Candidate[];
   onDelete: (id: number) => void;
   onRefresh: () => void;
+}
+
+// Helper to format date
+function formatDate(dateString: string | null | undefined): string {
+  if (!dateString) return "N/A";
+  return new Date(dateString).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+// Test status badge component
+function TestStatusBadge({ status }: { status: string }) {
+  const statusConfig: Record<string, { label: string; className: string }> = {
+    pending: { label: "Pending", className: "bg-gray-500/20 text-gray-400" },
+    in_progress: { label: "In Progress", className: "bg-yellow-500/20 text-yellow-500" },
+    completed: { label: "Completed", className: "bg-green-500/20 text-green-500" },
+    expired: { label: "Expired", className: "bg-red-500/20 text-red-500" },
+  };
+
+  const config = statusConfig[status] || statusConfig.pending;
+  return (
+    <Badge variant="outline" className={`text-xs ${config.className}`}>
+      {config.label}
+    </Badge>
+  );
 }
 
 export function CandidateTable({
@@ -57,6 +95,17 @@ export function CandidateTable({
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [generatedTestLink, setGeneratedTestLink] = useState<string>("");
   const [generatedForCandidate, setGeneratedForCandidate] = useState<string>("");
+  const [expandedCandidates, setExpandedCandidates] = useState<Set<number>>(new Set());
+
+  const toggleExpanded = (candidateId: number) => {
+    const newExpanded = new Set(expandedCandidates);
+    if (newExpanded.has(candidateId)) {
+      newExpanded.delete(candidateId);
+    } else {
+      newExpanded.add(candidateId);
+    }
+    setExpandedCandidates(newExpanded);
+  };
 
   const handleCreateTest = async (candidateId: number) => {
     setLoading(candidateId);
@@ -116,6 +165,88 @@ export function CandidateTable({
     );
   }
 
+  // Render a single test row
+  const renderTestRow = (test: TestSummary, isLatest: boolean) => {
+    const hasCompletedTest = test.status === "completed" || test.status === "expired";
+
+    return (
+      <div
+        key={test.id}
+        className={`p-3 rounded-lg ${isLatest ? "bg-muted/50" : "bg-muted/30"} ${!isLatest && "ml-4 border-l-2 border-muted"}`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <TestStatusBadge status={test.status} />
+                {isLatest && (
+                  <Badge variant="outline" className="text-xs bg-primary/10 text-primary">
+                    Latest
+                  </Badge>
+                )}
+                {test.overall_score !== null && (
+                  <span className={`text-sm font-medium ${getScoreColor(test.overall_score)}`}>
+                    {test.overall_score.toFixed(1)}%
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                Created: {formatDate(test.created_at)}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {test.status === "pending" && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => copyTestLink(test.access_token)}
+              >
+                {copied === test.access_token ? (
+                  <>
+                    <Check className="w-4 h-4 mr-1" />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 mr-1" />
+                    Copy Link
+                  </>
+                )}
+              </Button>
+            )}
+
+            {hasCompletedTest && !test.overall_score && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => handleGenerateReport(test.id)}
+                disabled={loading === test.id}
+              >
+                {loading === test.id ? (
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                ) : (
+                  <FileText className="w-4 h-4 mr-1" />
+                )}
+                Generate Report
+              </Button>
+            )}
+
+            {test.overall_score !== null && test.overall_score !== undefined && (
+              <Link href={`/admin/reports/${test.id}`}>
+                <Button size="sm" variant="secondary">
+                  <ExternalLink className="w-4 h-4 mr-1" />
+                  View Report
+                </Button>
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       {/* Test Link Dialog */}
@@ -161,166 +292,135 @@ export function CandidateTable({
 
       <div className="grid gap-4">
         {candidates.map((candidate) => {
-          const latestTest = candidate.tests?.[0];
-          const hasCompletedTest =
-            latestTest?.status === "completed" || latestTest?.status === "expired";
+          const tests = candidate.tests || [];
+          const latestTest = tests[0]; // Already sorted by created_at desc
+          const hasMultipleTests = tests.length > 1;
+          const isExpanded = expandedCandidates.has(candidate.id);
 
-        return (
-          <Card key={candidate.id}>
-            <CardHeader className="pb-2">
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="text-lg">{candidate.name}</CardTitle>
-                  <CardDescription className="flex items-center gap-2 mt-1">
-                    <Mail className="w-3 h-3" />
-                    {candidate.email}
-                  </CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs">
-                    {getDifficultyLabel(candidate.difficulty)}
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    <Clock className="w-3 h-3 mr-1" />
-                    {candidate.test_duration_hours}h
-                  </Badge>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-1 mb-4">
-                {candidate.categories.map((cat) => (
-                  <Badge key={cat} variant="outline" className="text-xs">
-                    {getCategoryLabel(cat)}
-                  </Badge>
-                ))}
-              </div>
-
-              {candidate.extracted_skills && candidate.extracted_skills.length > 0 && (
-                <div className="mb-4">
-                  <p className="text-xs text-muted-foreground mb-1">
-                    Extracted Skills:
-                  </p>
-                  <div className="flex flex-wrap gap-1">
-                    {candidate.extracted_skills.slice(0, 8).map((skill) => (
-                      <Badge key={skill} className="text-xs bg-primary/20 text-primary border-primary/50">
-                        {skill}
-                      </Badge>
-                    ))}
-                    {candidate.extracted_skills.length > 8 && (
-                      <Badge variant="secondary" className="text-xs">
-                        +{candidate.extracted_skills.length - 8} more
-                      </Badge>
-                    )}
+          return (
+            <Card key={candidate.id}>
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <CardTitle className="text-lg">{candidate.name}</CardTitle>
+                    <CardDescription className="flex items-center gap-2 mt-1">
+                      <Mail className="w-3 h-3" />
+                      {candidate.email}
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">
+                      {getDifficultyLabel(candidate.difficulty)}
+                    </Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      <Clock className="w-3 h-3 mr-1" />
+                      {candidate.test_duration_hours}h
+                    </Badge>
                   </div>
                 </div>
-              )}
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-1 mb-4">
+                  {candidate.categories.map((cat) => (
+                    <Badge key={cat} variant="outline" className="text-xs">
+                      {getCategoryLabel(cat)}
+                    </Badge>
+                  ))}
+                </div>
 
-              {latestTest && (
-                <div className="mb-4 p-3 rounded-lg bg-muted/50">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">
-                        Test Status:{" "}
-                        <span
-                          className={
-                            latestTest.status === "completed"
-                              ? "text-green-500"
-                              : latestTest.status === "in_progress"
-                              ? "text-yellow-500"
-                              : latestTest.status === "expired"
-                              ? "text-red-500"
-                              : "text-muted-foreground"
-                          }
-                        >
-                          {latestTest.status.replace("_", " ").toUpperCase()}
-                        </span>
-                      </p>
-                      {latestTest.overall_score !== null && (
-                        <p className="text-sm mt-1">
-                          Score:{" "}
-                          <span className={getScoreColor(latestTest.overall_score)}>
-                            {latestTest.overall_score.toFixed(1)}%
-                          </span>
-                        </p>
+                {candidate.extracted_skills && candidate.extracted_skills.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs text-muted-foreground mb-1">
+                      Extracted Skills:
+                    </p>
+                    <div className="flex flex-wrap gap-1">
+                      {candidate.extracted_skills.slice(0, 8).map((skill) => (
+                        <Badge key={skill} className="text-xs bg-primary/20 text-primary border-primary/50">
+                          {skill}
+                        </Badge>
+                      ))}
+                      {candidate.extracted_skills.length > 8 && (
+                        <Badge variant="secondary" className="text-xs">
+                          +{candidate.extracted_skills.length - 8} more
+                        </Badge>
                       )}
                     </div>
-                    {latestTest.status === "pending" && latestTest.access_token && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => copyTestLink(latestTest.access_token)}
-                      >
-                        {copied === latestTest.access_token ? (
-                          <>
-                            <Check className="w-4 h-4 mr-1" />
-                            Copied!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-4 h-4 mr-1" />
-                            Copy Link
-                          </>
-                        )}
-                      </Button>
-                    )}
                   </div>
-                </div>
-              )}
+                )}
 
-              <div className="flex items-center gap-2">
-                {!latestTest && (
+                {/* Test History Section */}
+                {tests.length > 0 ? (
+                  <div className="mb-4">
+                    <Collapsible open={isExpanded} onOpenChange={() => toggleExpanded(candidate.id)}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <History className="w-4 h-4 text-muted-foreground" />
+                          <p className="text-sm font-medium">
+                            Test History ({tests.length} test{tests.length > 1 ? "s" : ""})
+                          </p>
+                        </div>
+                        {hasMultipleTests && (
+                          <CollapsibleTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-7">
+                              {isExpanded ? (
+                                <>
+                                  <ChevronDown className="w-4 h-4 mr-1" />
+                                  Hide older
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronRight className="w-4 h-4 mr-1" />
+                                  Show all
+                                </>
+                              )}
+                            </Button>
+                          </CollapsibleTrigger>
+                        )}
+                      </div>
+
+                      {/* Always show latest test */}
+                      {latestTest && renderTestRow(latestTest, true)}
+
+                      {/* Older tests (collapsible) */}
+                      {hasMultipleTests && (
+                        <CollapsibleContent className="space-y-2 mt-2">
+                          {tests.slice(1).map((test) => renderTestRow(test, false))}
+                        </CollapsibleContent>
+                      )}
+                    </Collapsible>
+                  </div>
+                ) : null}
+
+                <div className="flex items-center gap-2">
+                  {/* Create New Test button - always visible */}
                   <Button
                     size="sm"
                     onClick={() => handleCreateTest(candidate.id)}
                     disabled={loading === candidate.id}
+                    variant={tests.length > 0 ? "outline" : "default"}
                   >
                     {loading === candidate.id ? (
                       <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    ) : tests.length > 0 ? (
+                      <Plus className="w-4 h-4 mr-1" />
                     ) : (
                       <Play className="w-4 h-4 mr-1" />
                     )}
-                    Create Test
+                    {tests.length > 0 ? "New Test" : "Create Test"}
                   </Button>
-                )}
 
-                {hasCompletedTest && !latestTest.overall_score && (
                   <Button
                     size="sm"
-                    variant="secondary"
-                    onClick={() => handleGenerateReport(latestTest.id)}
-                    disabled={loading === latestTest.id}
+                    variant="ghost"
+                    className="text-destructive ml-auto"
+                    onClick={() => onDelete(candidate.id)}
                   >
-                    {loading === latestTest.id ? (
-                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                    ) : (
-                      <FileText className="w-4 h-4 mr-1" />
-                    )}
-                    Generate Report
+                    <Trash2 className="w-4 h-4" />
                   </Button>
-                )}
-
-                {latestTest?.overall_score !== null && latestTest?.overall_score !== undefined && (
-                  <Link href={`/admin/reports/${latestTest.id}`}>
-                    <Button size="sm" variant="secondary">
-                      <ExternalLink className="w-4 h-4 mr-1" />
-                      View Report
-                    </Button>
-                  </Link>
-                )}
-
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-destructive ml-auto"
-                  onClick={() => onDelete(candidate.id)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        );
+                </div>
+              </CardContent>
+            </Card>
+          );
         })}
       </div>
     </>

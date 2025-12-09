@@ -166,10 +166,18 @@ async def get_test_by_token(access_token: str, db: AsyncSession = Depends(get_db
         if question.category not in questions_by_section:
             questions_by_section[question.category] = []
 
+        # is_answered is True only if submitted (not just draft saved)
         is_answered = bool(
             question.answer and
-            (question.answer.candidate_answer or question.answer.candidate_code)
+            question.answer.is_submitted
         )
+
+        # Include draft answer data for the frontend to restore
+        draft_answer = None
+        draft_code = None
+        if question.answer and not question.answer.is_submitted:
+            draft_answer = question.answer.candidate_answer
+            draft_code = question.answer.candidate_code
 
         questions_by_section[question.category].append({
             "id": question.id,
@@ -178,7 +186,9 @@ async def get_test_by_token(access_token: str, db: AsyncSession = Depends(get_db
             "question_text": question.question_text,
             "question_code": question.question_code,
             "max_score": question.max_score,
-            "is_answered": is_answered
+            "is_answered": is_answered,
+            "draft_answer": draft_answer,
+            "draft_code": draft_code
         })
 
     # Sort questions within each section
@@ -286,4 +296,144 @@ async def log_anti_cheat_event(
         "success": True,
         "tab_switch_count": test.tab_switch_count,
         "paste_attempt_count": test.paste_attempt_count
+    }
+
+
+@router.get("/kimi/test")
+async def test_kimi_connection():
+    """Test endpoint to verify Kimi2 connection is working."""
+    import time
+    start_time = time.time()
+
+    try:
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Say 'Hello, Kimi2 is working!' in exactly those words."}
+        ]
+
+        response = await ai_service._call_kimi_with_retry(messages, temperature=0.1)
+        elapsed = time.time() - start_time
+
+        return {
+            "success": bool(response),
+            "response": response[:500] if response else None,
+            "response_length": len(response) if response else 0,
+            "elapsed_seconds": round(elapsed, 2),
+            "api_url": ai_service.api_url,
+            "timeout": ai_service.timeout
+        }
+    except Exception as e:
+        elapsed = time.time() - start_time
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "elapsed_seconds": round(elapsed, 2),
+            "api_url": ai_service.api_url,
+            "timeout": ai_service.timeout
+        }
+
+
+@router.post("/{test_id}/reevaluate")
+async def reevaluate_test(test_id: int, db: AsyncSession = Depends(get_db)):
+    """Re-evaluate all answers for a test using AI.
+
+    This is useful when:
+    - AI was not working during original evaluation
+    - You want to re-score with updated AI model
+    - Original scores were placeholder values (like 50%)
+    """
+    # Get the test with all questions and answers
+    query = (
+        select(Test)
+        .options(
+            selectinload(Test.candidate),
+            selectinload(Test.questions).selectinload(Question.answer)
+        )
+        .where(Test.id == test_id)
+    )
+    result = await db.execute(query)
+    test = result.scalar_one_or_none()
+
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    # Get candidate info for evaluation context
+    candidate = test.candidate
+    difficulty = candidate.difficulty if candidate else "mid"
+
+    results = []
+    total_questions = 0
+    evaluated_count = 0
+    skipped_count = 0
+    error_count = 0
+
+    for question in test.questions:
+        total_questions += 1
+        answer = question.answer
+
+        # Skip if no answer submitted
+        if not answer or (not answer.candidate_answer and not answer.candidate_code):
+            skipped_count += 1
+            results.append({
+                "question_id": question.id,
+                "category": question.category,
+                "status": "skipped",
+                "reason": "No answer submitted"
+            })
+            continue
+
+        try:
+            # Call AI to evaluate
+            evaluation = await ai_service.evaluate_answer(
+                question_text=question.question_text,
+                question_code=question.question_code,
+                expected_answer=question.expected_answer or "",
+                candidate_answer=answer.candidate_answer or "",
+                candidate_code=answer.candidate_code,
+                category=question.category,
+                difficulty=difficulty
+            )
+
+            # Update answer with new evaluation
+            answer.score = evaluation.get("score", 50)
+            answer.feedback = evaluation.get("feedback", "")
+            answer.ai_evaluation = str(evaluation)
+            answer.evaluated_at = datetime.utcnow()
+
+            evaluated_count += 1
+            results.append({
+                "question_id": question.id,
+                "category": question.category,
+                "status": "evaluated",
+                "new_score": answer.score,
+                "feedback_preview": (evaluation.get("feedback", "")[:100] + "..."
+                                     if len(evaluation.get("feedback", "")) > 100
+                                     else evaluation.get("feedback", ""))
+            })
+
+        except Exception as e:
+            error_count += 1
+            results.append({
+                "question_id": question.id,
+                "category": question.category,
+                "status": "error",
+                "error": str(e)
+            })
+
+    await db.commit()
+
+    # Calculate new average score
+    scores = [r["new_score"] for r in results if r.get("new_score") is not None]
+    avg_score = sum(scores) / len(scores) if scores else 0
+
+    return {
+        "test_id": test_id,
+        "candidate_name": candidate.name if candidate else "Unknown",
+        "total_questions": total_questions,
+        "evaluated": evaluated_count,
+        "skipped": skipped_count,
+        "errors": error_count,
+        "new_average_score": round(avg_score, 1),
+        "details": results
     }

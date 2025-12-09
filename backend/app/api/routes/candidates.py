@@ -32,14 +32,17 @@ async def list_candidates(
     response = []
     for candidate in candidates:
         tests_summary = []
-        for test in candidate.tests:
+        # Sort tests by created_at descending (newest first)
+        sorted_tests = sorted(candidate.tests, key=lambda t: t.created_at, reverse=True)
+        for test in sorted_tests:
             tests_summary.append({
                 "id": test.id,
                 "access_token": test.access_token,
                 "status": test.status,
                 "start_time": test.start_time,
                 "end_time": test.end_time,
-                "overall_score": test.report.overall_score if test.report else None
+                "overall_score": test.report.overall_score if test.report else None,
+                "created_at": test.created_at
             })
 
         response.append(CandidateWithTests(
@@ -135,14 +138,17 @@ async def get_candidate(candidate_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Candidate not found")
 
     tests_summary = []
-    for test in candidate.tests:
+    # Sort tests by created_at descending (newest first)
+    sorted_tests = sorted(candidate.tests, key=lambda t: t.created_at, reverse=True)
+    for test in sorted_tests:
         tests_summary.append({
             "id": test.id,
             "access_token": test.access_token,
             "status": test.status,
             "start_time": test.start_time,
             "end_time": test.end_time,
-            "overall_score": test.report.overall_score if test.report else None
+            "overall_score": test.report.overall_score if test.report else None,
+            "created_at": test.created_at
         })
 
     return CandidateWithTests(

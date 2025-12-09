@@ -1,24 +1,24 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import { getCategoryLabel } from "@/lib/utils";
+import { cn, getQuestDeity, getQuestDescription } from "@/lib/utils";
 import { Question } from "@/types";
 import {
-  Brain,
-  Code,
-  Bug,
-  Network,
-  Radio,
+  Scroll,
+  Hammer,
+  Flame,
+  Building2,
+  Activity,
   CheckCircle,
   Circle,
 } from "lucide-react";
 
+// Mythological icons for each category
 const categoryIcons: Record<string, React.ElementType> = {
-  brain_teaser: Brain,
-  coding: Code,
-  code_review: Bug,
-  system_design: Network,
-  signal_processing: Radio,
+  brain_teaser: Scroll,      // Sibyl - prophetic scrolls
+  coding: Hammer,            // Hephaestus - forge
+  code_review: Flame,        // Prometheus - fire of knowledge
+  system_design: Building2,  // Athena - architecture
+  signal_processing: Activity, // Asclepius - life signs
 };
 
 interface SectionNavProps {
@@ -49,6 +49,8 @@ export function SectionNav({
         const answeredCount = questions.filter((q) => q.is_answered).length;
         const isComplete = answeredCount === questions.length;
         const Icon = categoryIcons[section] || Circle;
+        const deityName = getQuestDeity(section);
+        const description = getQuestDescription(section);
 
         return (
           <button
@@ -64,9 +66,12 @@ export function SectionNav({
             <Icon className="w-5 h-5 shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="font-medium truncate">
-                {getCategoryLabel(section)}
+                {deityName}&apos;s Challenge
               </p>
-              <p className="text-xs opacity-80">
+              <p className="text-xs opacity-80 truncate">
+                {description}
+              </p>
+              <p className="text-xs opacity-60 mt-0.5">
                 {answeredCount}/{questions.length} completed
               </p>
             </div>

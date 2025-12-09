@@ -19,20 +19,24 @@ import {
   getDifficultyLabel,
   getScoreColor,
   getRecommendationBadge,
+  getQuestDeity,
+  getQuestDifficultyLabel,
 } from "@/lib/utils";
 import {
   Loader2,
   CheckCircle,
-  XCircle,
   AlertCircle,
   ArrowLeft,
   Eye,
   Clipboard,
   Clock,
   AlertTriangle,
+  Download,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export default function ReportDetailPage() {
   const params = useParams();
@@ -86,12 +90,339 @@ export default function ReportDetailPage() {
 
   const badge = getRecommendationBadge(report.recommendation);
 
+  const generatePDF = async () => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 20;
+    let yPosition = 20;
+
+    // Helper to add new page if needed
+    const checkPageBreak = (height: number) => {
+      if (yPosition + height > doc.internal.pageSize.getHeight() - 20) {
+        doc.addPage();
+        yPosition = 20;
+      }
+    };
+
+    // Load logo image
+    let logoLoaded = false;
+    try {
+      const logoImg = new Image();
+      logoImg.crossOrigin = "anonymous";
+      await new Promise<void>((resolve, reject) => {
+        logoImg.onload = () => {
+          logoLoaded = true;
+          resolve();
+        };
+        logoImg.onerror = () => reject(new Error("Failed to load logo"));
+        logoImg.src = "/kos-quest-logo.png";
+      });
+
+      // Add logo to PDF header if loaded
+      if (logoLoaded) {
+        // Header with KOS Quest branding - taller to accommodate logo
+        doc.setFillColor(30, 27, 75);
+        doc.rect(0, 0, pageWidth, 55, "F");
+
+        // Gold accent line
+        doc.setFillColor(201, 162, 39);
+        doc.rect(0, 53, pageWidth, 2, "F");
+
+        // Add logo image (scaled down)
+        doc.addImage(logoImg, "PNG", pageWidth - margin - 50, 5, 45, 30);
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(28);
+        doc.setFont("helvetica", "bold");
+        doc.text("KOS Quest", margin, 25);
+
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(201, 162, 39);
+        doc.text("Forge Your Legend", margin, 35);
+
+        doc.setFontSize(11);
+        doc.setTextColor(200, 200, 200);
+        doc.text("A Mythological Engineering Assessment", margin, 45);
+
+        yPosition = 70;
+      }
+    } catch {
+      // Fallback to text-only header if logo fails to load
+      doc.setFillColor(30, 27, 75);
+      doc.rect(0, 0, pageWidth, 50, "F");
+
+      doc.setFillColor(201, 162, 39);
+      doc.rect(0, 48, pageWidth, 2, "F");
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(28);
+      doc.setFont("helvetica", "bold");
+      doc.text("KOS Quest", margin, 25);
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(201, 162, 39);
+      doc.text("Forge Your Legend", margin, 33);
+
+      doc.setFontSize(11);
+      doc.setTextColor(200, 200, 200);
+      doc.text("A Mythological Engineering Assessment", margin, 42);
+
+      yPosition = 65;
+    }
+
+    // Reset text color
+    doc.setTextColor(0, 0, 0);
+
+    // Candidate Information - "Challenger Profile"
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 27, 75);
+    doc.text("Challenger Profile", margin, yPosition);
+    doc.setTextColor(0, 0, 0);
+    yPosition += 10;
+
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Name: ${report.candidate_name}`, margin, yPosition);
+    yPosition += 7;
+    doc.text(`Email: ${report.candidate_email}`, margin, yPosition);
+    yPosition += 7;
+    doc.text(`Quest Date: ${new Date(report.generated_at).toLocaleDateString()}`, margin, yPosition);
+    yPosition += 7;
+    const questDifficulty = getQuestDifficultyLabel(report.difficulty || "");
+    doc.text(`Challenge Level: ${questDifficulty} (${getDifficultyLabel(report.difficulty || "")})`, margin, yPosition);
+    yPosition += 15;
+
+    // Overall Score and Recommendation
+    doc.setFillColor(240, 240, 240);
+    doc.rect(margin, yPosition - 5, pageWidth - 2 * margin, 35, "F");
+
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("Overall Assessment", margin + 5, yPosition + 5);
+
+    doc.setFontSize(28);
+    const score = report.overall_score ?? 0;
+    const scoreColor = score >= 70 ? [34, 197, 94] : score >= 50 ? [234, 179, 8] : [239, 68, 68];
+    doc.setTextColor(scoreColor[0], scoreColor[1], scoreColor[2]);
+    doc.text(`${report.overall_score?.toFixed(1)}%`, margin + 5, yPosition + 22);
+
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(14);
+    const recLabel = badge.label.toUpperCase();
+    const recColor = report.recommendation === "strong_hire" ? [34, 197, 94] :
+                     report.recommendation === "hire" ? [59, 130, 246] :
+                     report.recommendation === "maybe" ? [234, 179, 8] : [239, 68, 68];
+    doc.setTextColor(recColor[0], recColor[1], recColor[2]);
+    doc.text(recLabel, pageWidth - margin - 60, yPosition + 15);
+
+    doc.setTextColor(0, 0, 0);
+    yPosition += 45;
+
+    // Section Scores - "Trial Results"
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 27, 75);
+    doc.text("Trial Results", margin, yPosition);
+    doc.setTextColor(0, 0, 0);
+    yPosition += 10;
+
+    const sectionData = [
+      { name: "Sibyl's Riddles", category: "brain_teaser", score: report.brain_teaser_score },
+      { name: "Hephaestus' Forge", category: "coding", score: report.coding_score },
+      { name: "Prometheus' Gift", category: "code_review", score: report.code_review_score },
+      { name: "Athena's Architecture", category: "system_design", score: report.system_design_score },
+      { name: "Asclepius' Arts", category: "signal_processing", score: report.signal_processing_score },
+    ].filter(s => s.score !== null && s.score !== undefined);
+
+    sectionData.forEach((section) => {
+      const barWidth = pageWidth - 2 * margin - 100;
+      const scorePercent = (section.score || 0) / 100;
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(section.name, margin, yPosition);
+      doc.text(`${section.score?.toFixed(1)}%`, pageWidth - margin - 30, yPosition);
+
+      // Background bar
+      doc.setFillColor(229, 231, 235);
+      doc.rect(margin + 70, yPosition - 4, barWidth - 40, 6, "F");
+
+      // Score bar
+      const barColor = (section.score || 0) >= 70 ? [34, 197, 94] : (section.score || 0) >= 50 ? [234, 179, 8] : [239, 68, 68];
+      doc.setFillColor(barColor[0], barColor[1], barColor[2]);
+      doc.rect(margin + 70, yPosition - 4, (barWidth - 40) * scorePercent, 6, "F");
+
+      yPosition += 12;
+    });
+
+    yPosition += 10;
+
+    // AI Summary
+    if (report.ai_summary) {
+      checkPageBreak(40);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("AI Summary", margin, yPosition);
+      yPosition += 8;
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      const summaryLines = doc.splitTextToSize(report.ai_summary, pageWidth - 2 * margin);
+      doc.text(summaryLines, margin, yPosition);
+      yPosition += summaryLines.length * 5 + 10;
+    }
+
+    // Strengths
+    if (report.strengths && report.strengths.length > 0) {
+      checkPageBreak(30 + report.strengths.length * 8);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(34, 197, 94);
+      doc.text("Strengths", margin, yPosition);
+      doc.setTextColor(0, 0, 0);
+      yPosition += 8;
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      report.strengths.forEach((strength) => {
+        const lines = doc.splitTextToSize(`• ${strength}`, pageWidth - 2 * margin - 10);
+        checkPageBreak(lines.length * 5 + 5);
+        doc.text(lines, margin + 5, yPosition);
+        yPosition += lines.length * 5 + 3;
+      });
+      yPosition += 7;
+    }
+
+    // Weaknesses
+    if (report.weaknesses && report.weaknesses.length > 0) {
+      checkPageBreak(30 + report.weaknesses.length * 8);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(234, 179, 8);
+      doc.text("Areas for Improvement", margin, yPosition);
+      doc.setTextColor(0, 0, 0);
+      yPosition += 8;
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      report.weaknesses.forEach((weakness) => {
+        const lines = doc.splitTextToSize(`• ${weakness}`, pageWidth - 2 * margin - 10);
+        checkPageBreak(lines.length * 5 + 5);
+        doc.text(lines, margin + 5, yPosition);
+        yPosition += lines.length * 5 + 3;
+      });
+      yPosition += 7;
+    }
+
+    // Integrity Metrics
+    checkPageBreak(50);
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("Integrity Metrics", margin, yPosition);
+    yPosition += 10;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+
+    const tabSwitches = report.tab_switch_count || 0;
+    const pasteAttempts = report.paste_attempt_count || 0;
+
+    if (tabSwitches > 0 || pasteAttempts > 0) {
+      doc.setTextColor(239, 68, 68);
+    } else {
+      doc.setTextColor(34, 197, 94);
+    }
+    doc.text(`Tab Switches: ${tabSwitches}`, margin, yPosition);
+    yPosition += 6;
+    doc.text(`Paste Attempts: ${pasteAttempts}`, margin, yPosition);
+    doc.setTextColor(0, 0, 0);
+    yPosition += 15;
+
+    // Detailed Feedback
+    if (report.detailed_feedback) {
+      checkPageBreak(40);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text("Detailed Feedback", margin, yPosition);
+      yPosition += 8;
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      const feedbackLines = doc.splitTextToSize(report.detailed_feedback, pageWidth - 2 * margin);
+      feedbackLines.forEach((line: string) => {
+        checkPageBreak(6);
+        doc.text(line, margin, yPosition);
+        yPosition += 5;
+      });
+      yPosition += 10;
+    }
+
+    // Question Details Table - "Trial Chronicle"
+    if (questions.length > 0) {
+      doc.addPage();
+      yPosition = 20;
+
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 27, 75);
+      doc.text("Trial Chronicle", margin, yPosition);
+      doc.setTextColor(0, 0, 0);
+      yPosition += 10;
+
+      const tableData = questions.map((q, i) => [
+        (i + 1).toString(),
+        getQuestDeity(q.category),
+        q.question_text.substring(0, 60) + (q.question_text.length > 60 ? "..." : ""),
+        q.answer?.score !== null && q.answer?.score !== undefined ? `${q.answer.score.toFixed(0)}%` : "N/A",
+        q.answer?.time_spent_seconds ? `${Math.floor(q.answer.time_spent_seconds / 60)}m ${q.answer.time_spent_seconds % 60}s` : "N/A",
+      ]);
+
+      autoTable(doc, {
+        startY: yPosition,
+        head: [["#", "Trial", "Challenge", "Score", "Time"]],
+        body: tableData,
+        theme: "striped",
+        headStyles: { fillColor: [30, 27, 75] },
+        columnStyles: {
+          0: { cellWidth: 10 },
+          1: { cellWidth: 30 },
+          2: { cellWidth: 90 },
+          3: { cellWidth: 20 },
+          4: { cellWidth: 20 },
+        },
+        styles: { fontSize: 8 },
+      });
+    }
+
+    // Footer on all pages
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(128, 128, 128);
+      doc.text(
+        `KOS Quest - Forge Your Legend | Page ${i} of ${totalPages}`,
+        pageWidth / 2,
+        doc.internal.pageSize.getHeight() - 10,
+        { align: "center" }
+      );
+    }
+
+    // Save the PDF
+    const candidateName = report.candidate_name ?? "Candidate";
+    const fileName = `${candidateName.replace(/\s+/g, "_")}_KOS_Quest_Report.pdf`;
+    doc.save(fileName);
+  };
+
   const sectionScores = [
-    { name: "Brain Teasers", score: report.brain_teaser_score, key: "brain_teaser" },
-    { name: "Coding", score: report.coding_score, key: "coding" },
-    { name: "Code Review", score: report.code_review_score, key: "code_review" },
-    { name: "System Design", score: report.system_design_score, key: "system_design" },
-    { name: "Signal Processing", score: report.signal_processing_score, key: "signal_processing" },
+    { name: "Sibyl's Riddles", deity: "Sibyl", score: report.brain_teaser_score, key: "brain_teaser" },
+    { name: "Hephaestus' Forge", deity: "Hephaestus", score: report.coding_score, key: "coding" },
+    { name: "Prometheus' Gift", deity: "Prometheus", score: report.code_review_score, key: "code_review" },
+    { name: "Athena's Architecture", deity: "Athena", score: report.system_design_score, key: "system_design" },
+    { name: "Asclepius' Arts", deity: "Asclepius", score: report.signal_processing_score, key: "signal_processing" },
   ].filter((s) => s.score !== null);
 
   const questionsByCategory = questions.reduce((acc, q) => {
@@ -102,17 +433,23 @@ export default function ReportDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Link href="/admin/reports">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-3xl font-bold">{report.candidate_name}</h1>
-          <p className="text-muted-foreground">{report.candidate_email}</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link href="/admin/reports">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold">{report.candidate_name}</h1>
+            <p className="text-muted-foreground">{report.candidate_email}</p>
+          </div>
         </div>
+        <Button onClick={generatePDF} className="gap-2">
+          <Download className="w-4 h-4" />
+          Download PDF
+        </Button>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

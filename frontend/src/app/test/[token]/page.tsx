@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { testsApi } from "@/lib/api";
-import { TestWithQuestions, Question } from "@/types";
+import { useParams } from "next/navigation";
+import Image from "next/image";
+import { testsApi, answersApi, feedbackApi } from "@/lib/api";
+import { TestWithQuestions } from "@/types";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -25,22 +26,42 @@ import {
 import { Timer } from "@/components/test/Timer";
 import { SectionNav } from "@/components/test/SectionNav";
 import { QuestionCard } from "@/components/test/QuestionCard";
-import { getCategoryLabel, getDifficultyLabel } from "@/lib/utils";
+import {
+  getQuestTitle,
+  getQuestDeity,
+  getQuestDifficultyLabel,
+  getDifficultyLabel,
+} from "@/lib/utils";
+import { QUEST_BRANDING, QUEST_CATEGORIES } from "@/config/questTheme";
 import {
   Loader2,
-  Brain,
-  Play,
   CheckCircle,
   AlertTriangle,
   Clock,
   Eye,
+  Scroll,
+  Hammer,
+  Flame,
+  Building2,
+  Activity,
+  Sparkles,
+  Swords,
+  Save,
+  AlertCircle,
+  Cloud,
+  CloudOff,
+  WifiOff,
+  Send,
+  MessageSquare,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 type ViewState = "loading" | "welcome" | "test" | "completed" | "expired" | "error";
 
 export default function TestPage() {
   const params = useParams();
-  const router = useRouter();
   const token = params.token as string;
 
   const [viewState, setViewState] = useState<ViewState>("loading");
@@ -49,10 +70,61 @@ export default function TestPage() {
   const [error, setError] = useState<string>("");
   const [isStarting, setIsStarting] = useState(false);
 
+  // Section navigation state
+  const [showSavingOverlay, setShowSavingOverlay] = useState(false);
+
+  // Complete test confirmation
+  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
+  const [incompleteInfo, setIncompleteInfo] = useState<{
+    total: number;
+    answered: number;
+    sections: { name: string; answered: number; total: number }[];
+  } | null>(null);
+
+  // Track unsaved changes across questions
+  const unsavedQuestionsRef = useRef<Set<number>>(new Set());
+  const hasUnsavedChanges = useRef(false);
+
+  // Sync status state
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "synced" | "error">("idle");
+  const [pendingCount, setPendingCount] = useState(0);
+  const [isOnline, setIsOnline] = useState(true);
+  const localAnswersRef = useRef<Map<number, { answer: string; code: string }>>(new Map());
+
+  // Batch submit state
+  const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
+  const [batchSubmitProgress, setBatchSubmitProgress] = useState({ current: 0, total: 0 });
+  const [showBatchSubmitConfirm, setShowBatchSubmitConfirm] = useState(false);
+
+  // Live feedback state - persisted in localStorage (default ON for better UX)
+  const [feedbackEnabled, setFeedbackEnabled] = useState(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("kos_feedback_enabled");
+      // Default to true if not set
+      return stored === null ? true : stored === "true";
+    }
+    return true;
+  });
+
+  // Persist feedback preference
+  const handleFeedbackToggle = (enabled: boolean) => {
+    setFeedbackEnabled(enabled);
+    localStorage.setItem("kos_feedback_enabled", enabled.toString());
+  };
+
   // Anti-cheat state
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [showTabWarning, setShowTabWarning] = useState(false);
   const isTestActive = useRef(false);
+
+  // Improvement feedback state (shown on completion)
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackResult, setFeedbackResult] = useState<{
+    message: string;
+    autoImplemented: boolean;
+  } | null>(null);
 
   const fetchTest = useCallback(async () => {
     try {
@@ -64,7 +136,7 @@ export default function TestPage() {
       } else if (response.data.status === "in_progress") {
         setViewState("test");
         const sections = Object.keys(response.data.questions_by_section);
-        if (sections.length > 0) {
+        if (sections.length > 0 && !currentSection) {
           setCurrentSection(sections[0]);
         }
       } else if (response.data.status === "completed") {
@@ -77,27 +149,38 @@ export default function TestPage() {
       setError("Test not found or invalid link");
       setViewState("error");
     }
-  }, [token]);
+  }, [token, currentSection]);
 
   useEffect(() => {
     fetchTest();
   }, [fetchTest]);
 
+  // Beforeunload warning for unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges.current && viewState === "test") {
+        e.preventDefault();
+        e.returnValue = "You have unsaved changes. Are you sure you want to leave?";
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [viewState]);
+
   // Tab/window switch detection
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden && isTestActive.current) {
-        // User switched away from the tab
         const timestamp = new Date().toISOString();
         setTabSwitchCount((prev) => prev + 1);
 
-        // Log to backend
         testsApi.logAntiCheatEvent(token, {
           event_type: "tab_switch",
           timestamp,
         }).catch(console.error);
       } else if (!document.hidden && isTestActive.current) {
-        // User returned to the tab - show warning
         setShowTabWarning(true);
       }
     };
@@ -131,17 +214,80 @@ export default function TestPage() {
     };
   }, [token]);
 
-  // Update isTestActive when viewState changes
   useEffect(() => {
     isTestActive.current = viewState === "test";
   }, [viewState]);
 
+  // Monitor online status
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    setIsOnline(navigator.onLine);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  // Track local answer changes
+  const handleLocalChange = useCallback((questionId: number, answer: string, code: string) => {
+    localAnswersRef.current.set(questionId, { answer, code });
+    setPendingCount(localAnswersRef.current.size);
+  }, []);
+
+  // Handle save status changes from QuestionCard
+  const handleSaveStatusChange = useCallback((questionId: number, hasUnsaved: boolean) => {
+    if (hasUnsaved) {
+      unsavedQuestionsRef.current.add(questionId);
+    } else {
+      unsavedQuestionsRef.current.delete(questionId);
+    }
+    hasUnsavedChanges.current = unsavedQuestionsRef.current.size > 0;
+  }, []);
+
+  // Save all questions in current section before navigation
+  const saveAllQuestionsInSection = async (): Promise<boolean> => {
+    const saveQuestions = (window as unknown as { __saveQuestion?: Record<number, () => Promise<boolean>> }).__saveQuestion;
+    if (!saveQuestions) return true;
+
+    const currentQuestions = test?.questions_by_section[currentSection] || [];
+    const savePromises = currentQuestions
+      .filter((q) => saveQuestions[q.id])
+      .map((q) => saveQuestions[q.id]());
+
+    try {
+      const results = await Promise.all(savePromises);
+      return results.every(Boolean);
+    } catch {
+      return false;
+    }
+  };
+
+  // Handle section change with save guard
+  const handleSectionChange = async (newSection: string) => {
+    if (newSection === currentSection) return;
+
+    // Check if there are unsaved changes
+    if (unsavedQuestionsRef.current.size > 0) {
+      setShowSavingOverlay(true);
+
+      await saveAllQuestionsInSection();
+
+      setShowSavingOverlay(false);
+      setCurrentSection(newSection);
+    } else {
+      setCurrentSection(newSection);
+    }
+  };
+
   const handleStartTest = async () => {
-    console.log("Starting test with token:", token);
     setIsStarting(true);
     try {
-      const response = await testsApi.start(token);
-      console.log("Start test response:", response);
+      await testsApi.start(token);
       await fetchTest();
     } catch (err: unknown) {
       console.error("Error starting test:", err);
@@ -153,10 +299,37 @@ export default function TestPage() {
     }
   };
 
-  const handleCompleteTest = async () => {
-    if (!confirm("Are you sure you want to submit your test? You cannot make changes after submission.")) {
-      return;
-    }
+  const handleCompleteTestClick = () => {
+    if (!test) return;
+
+    // Calculate incomplete sections info
+    const sections = test.questions_by_section;
+    const totalQuestions = Object.values(sections).flat().length;
+    const answeredQuestions = Object.values(sections)
+      .flat()
+      .filter((q) => q.is_answered).length;
+
+    const sectionInfo = Object.entries(sections).map(([name, questions]) => ({
+      name: getQuestDeity(name),
+      answered: questions.filter((q) => q.is_answered).length,
+      total: questions.length,
+    }));
+
+    setIncompleteInfo({
+      total: totalQuestions,
+      answered: answeredQuestions,
+      sections: sectionInfo,
+    });
+    setShowCompleteConfirm(true);
+  };
+
+  const handleConfirmComplete = async () => {
+    setShowCompleteConfirm(false);
+
+    // Save all questions first
+    setShowSavingOverlay(true);
+    await saveAllQuestionsInSection();
+    setShowSavingOverlay(false);
 
     try {
       await testsApi.complete(token);
@@ -167,6 +340,9 @@ export default function TestPage() {
   };
 
   const handleTimeExpired = async () => {
+    // Save all before expiry
+    await saveAllQuestionsInSection();
+
     try {
       await testsApi.complete(token);
       setViewState("expired");
@@ -177,6 +353,123 @@ export default function TestPage() {
 
   const handleAnswerSubmitted = () => {
     fetchTest();
+  };
+
+  // Handle improvement feedback submission
+  const handleFeedbackSubmit = async () => {
+    if (feedbackText.trim().length < 10) return;
+
+    setFeedbackSubmitting(true);
+    try {
+      const response = await feedbackApi.submit({
+        raw_feedback: feedbackText,
+        test_access_token: token,
+      });
+      setFeedbackResult({
+        message: response.data.message,
+        autoImplemented: response.data.auto_implemented,
+      });
+      setFeedbackSubmitted(true);
+    } catch (err) {
+      console.error("Error submitting feedback:", err);
+      setFeedbackResult({
+        message: "Thank you for your feedback! It has been recorded.",
+        autoImplemented: false,
+      });
+      setFeedbackSubmitted(true);
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  };
+
+  // Sync all pending answers to backend
+  const syncAllAnswers = async () => {
+    if (localAnswersRef.current.size === 0) return;
+
+    setSyncStatus("syncing");
+    const drafts = Array.from(localAnswersRef.current.entries()).map(([questionId, data]) => ({
+      question_id: questionId,
+      candidate_answer: data.answer || undefined,
+      candidate_code: data.code || undefined,
+    }));
+
+    try {
+      await answersApi.batchSaveDrafts(drafts);
+      localAnswersRef.current.clear();
+      setPendingCount(0);
+      setSyncStatus("synced");
+      setTimeout(() => setSyncStatus("idle"), 2000);
+    } catch (error) {
+      console.error("Batch sync error:", error);
+      setSyncStatus("error");
+    }
+  };
+
+  // Batch submit all answers for AI evaluation
+  const handleBatchSubmit = async () => {
+    if (!test) return;
+    setShowBatchSubmitConfirm(false);
+
+    // Get all questions with answers
+    const allQuestions = Object.values(test.questions_by_section).flat();
+    const answersToSubmit = allQuestions.filter(q => {
+      const local = localAnswersRef.current.get(q.id);
+      const hasLocal = local && (local.answer?.trim() || local.code?.trim());
+      const hasDraft = q.draft_answer?.trim() || q.draft_code?.trim();
+      const hasExisting = q.answer?.candidate_answer?.trim() || q.answer?.candidate_code?.trim();
+      return hasLocal || hasDraft || hasExisting;
+    });
+
+    if (answersToSubmit.length === 0) {
+      alert("No answers to submit");
+      return;
+    }
+
+    setIsBatchSubmitting(true);
+    setBatchSubmitProgress({ current: 0, total: answersToSubmit.length });
+
+    try {
+      const batchData = answersToSubmit.map(q => {
+        const local = localAnswersRef.current.get(q.id);
+        return {
+          question_id: q.id,
+          candidate_answer: local?.answer || q.draft_answer || q.answer?.candidate_answer || undefined,
+          candidate_code: local?.code || q.draft_code || q.answer?.candidate_code || undefined,
+        };
+      });
+
+      // Submit in batches of 5 to show progress
+      const batchSize = 5;
+      for (let i = 0; i < batchData.length; i += batchSize) {
+        const batch = batchData.slice(i, i + batchSize);
+        await answersApi.batchSubmit(batch);
+        setBatchSubmitProgress({ current: Math.min(i + batchSize, batchData.length), total: batchData.length });
+      }
+
+      // Clear local storage and refresh
+      localAnswersRef.current.clear();
+      setPendingCount(0);
+      await fetchTest();
+    } catch (error) {
+      console.error("Batch submit error:", error);
+      alert("Some answers failed to submit. Please try again.");
+    } finally {
+      setIsBatchSubmitting(false);
+      setBatchSubmitProgress({ current: 0, total: 0 });
+    }
+  };
+
+  // Get unsubmitted answer count
+  const getUnsubmittedCount = () => {
+    if (!test) return 0;
+    return Object.values(test.questions_by_section)
+      .flat()
+      .filter(q => !q.is_answered && (
+        localAnswersRef.current.get(q.id)?.answer?.trim() ||
+        localAnswersRef.current.get(q.id)?.code?.trim() ||
+        q.draft_answer?.trim() ||
+        q.draft_code?.trim()
+      )).length;
   };
 
   if (viewState === "loading") {
@@ -201,78 +494,187 @@ export default function TestPage() {
     );
   }
 
+  const categoryIcons: Record<string, React.ElementType> = {
+    brain_teaser: Scroll,
+    coding: Hammer,
+    code_review: Flame,
+    system_design: Building2,
+    signal_processing: Activity,
+  };
+
   if (viewState === "welcome" && test) {
+    const sections = Object.keys(test.questions_by_section);
+
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="max-w-lg w-full">
-          <CardHeader className="text-center">
-            <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center">
-                <Brain className="w-8 h-8 text-primary" />
-              </div>
+      <div className="min-h-screen bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900 p-4">
+        <div className="max-w-4xl mx-auto py-8">
+          <div className="text-center mb-8">
+            <div className="mb-4">
+              <Image
+                src="/kos-quest-logo.png"
+                alt="KOS Quest"
+                width={200}
+                height={200}
+                className="mx-auto"
+                priority
+              />
             </div>
-            <CardTitle className="text-2xl">Welcome, {test.candidate_name}!</CardTitle>
-            <CardDescription>
-              KOS AI Engineering Assessment
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-4">
-              <div className="flex justify-between items-center p-3 rounded-lg bg-muted">
-                <span className="text-muted-foreground">Duration</span>
-                <span className="font-medium flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  {test.duration_hours} hour(s)
-                </span>
+            <h1 className="text-4xl font-bold text-white mb-2">
+              {QUEST_BRANDING.name}
+            </h1>
+            <p className="text-amber-400 text-lg font-medium">
+              {QUEST_BRANDING.tagline}
+            </p>
+            <p className="text-slate-400 text-sm mt-1">
+              {QUEST_BRANDING.subtitle}
+            </p>
+          </div>
+
+          <Card className="bg-slate-800/50 border-slate-700 backdrop-blur">
+            <CardHeader className="text-center border-b border-slate-700 pb-6">
+              <CardTitle className="text-2xl text-white">
+                {QUEST_BRANDING.welcome.title}, {test.candidate_name}!
+              </CardTitle>
+              <CardDescription className="text-slate-300 text-base mt-2">
+                {QUEST_BRANDING.welcome.intro}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-6">
+              <div className="space-y-3">
+                {QUEST_BRANDING.welcome.instructions.map((instruction, i) => (
+                  <div key={i} className="flex items-start gap-3 text-slate-300">
+                    <Sparkles className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                    <span className="text-sm">{instruction}</span>
+                  </div>
+                ))}
               </div>
 
-              <div className="flex justify-between items-center p-3 rounded-lg bg-muted">
-                <span className="text-muted-foreground">Difficulty</span>
-                <Badge variant="outline">
-                  {getDifficultyLabel(test.difficulty)}
-                </Badge>
-              </div>
+              <div className="grid md:grid-cols-2 gap-4 pt-4">
+                <div className="p-4 rounded-lg bg-slate-900/50 border border-slate-700">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="w-4 h-4 text-amber-400" />
+                    <span className="text-slate-400 text-sm">Quest Duration</span>
+                  </div>
+                  <span className="text-xl font-bold text-white">
+                    {test.duration_hours} hour(s)
+                  </span>
+                </div>
 
-              <div className="p-3 rounded-lg bg-muted">
-                <p className="text-muted-foreground mb-2">Categories</p>
-                <div className="flex flex-wrap gap-1">
-                  {Object.keys(test.questions_by_section).map((cat) => (
-                    <Badge key={cat} variant="secondary">
-                      {getCategoryLabel(cat)}
-                    </Badge>
-                  ))}
+                <div className="p-4 rounded-lg bg-slate-900/50 border border-slate-700">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span className="text-slate-400 text-sm">Challenge Level</span>
+                  </div>
+                  <span className="text-xl font-bold text-white">
+                    {getQuestDifficultyLabel(test.difficulty)}
+                  </span>
+                  <span className="text-slate-400 text-sm ml-2">
+                    ({getDifficultyLabel(test.difficulty)})
+                  </span>
                 </div>
               </div>
-            </div>
 
-            <div className="p-4 rounded-lg border border-yellow-500/50 bg-yellow-500/10">
-              <p className="text-sm text-yellow-500">
-                <strong>Important:</strong> Once you start, the timer will begin.
-                Make sure you have a stable internet connection and enough time
-                to complete the assessment.
-              </p>
-            </div>
+              <div className="pt-4">
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                  <Scroll className="w-5 h-5 text-amber-400" />
+                  Your Trials Await
+                </h3>
+                <div className="grid gap-3">
+                  {sections.map((cat) => {
+                    const category = QUEST_CATEGORIES[cat];
+                    const Icon = categoryIcons[cat] || Scroll;
+                    const questionCount = test.questions_by_section[cat]?.length || 0;
 
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={handleStartTest}
-              disabled={isStarting}
-            >
-              {isStarting ? (
-                <>
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  Starting...
-                </>
-              ) : (
-                <>
-                  <Play className="w-5 h-5 mr-2" />
-                  Start Assessment
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
+                    return (
+                      <div
+                        key={cat}
+                        className="flex items-center gap-4 p-4 rounded-lg bg-slate-900/50 border border-slate-700 hover:border-amber-500/50 transition-colors"
+                      >
+                        <div
+                          className="w-12 h-12 rounded-lg flex items-center justify-center"
+                          style={{ backgroundColor: category?.color.primary + "20" }}
+                        >
+                          <Icon
+                            className="w-6 h-6"
+                            style={{ color: category?.color.primary }}
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-semibold text-white">
+                            {category?.title || cat}
+                          </p>
+                          <p className="text-sm text-slate-400">
+                            {category?.shortDescription}
+                          </p>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className="border-slate-600 text-slate-300"
+                        >
+                          {questionCount} challenges
+                        </Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="p-4 rounded-lg border border-amber-500/50 bg-amber-500/10">
+                <p className="text-sm text-amber-400">
+                  <strong>Prepare yourself:</strong> Once you begin your quest, the sands of time will flow.
+                  Ensure you have a stable connection and sufficient time to complete all trials.
+                </p>
+              </div>
+
+              {/* Live AI Feedback Toggle */}
+              <div className="p-4 rounded-lg bg-slate-900/50 border border-slate-700">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                      <MessageSquare className="w-5 h-5 text-purple-400" />
+                    </div>
+                    <div>
+                      <Label htmlFor="feedback-toggle" className="text-white font-medium cursor-pointer">
+                        Enable Live AI Feedback
+                      </Label>
+                      <p className="text-sm text-slate-400">
+                        Get real-time hints and suggestions while you answer
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="feedback-toggle"
+                    checked={feedbackEnabled}
+                    onCheckedChange={handleFeedbackToggle}
+                  />
+                </div>
+              </div>
+
+              <Button
+                className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-900 font-semibold"
+                size="lg"
+                onClick={handleStartTest}
+                disabled={isStarting}
+              >
+                {isStarting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    Preparing the Arena...
+                  </>
+                ) : (
+                  <>
+                    <Swords className="w-5 h-5 mr-2" />
+                    Begin Your Quest
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <p className="text-center text-slate-500 text-sm mt-6">
+            {QUEST_BRANDING.name} - {QUEST_BRANDING.subtitle}
+          </p>
+        </div>
       </div>
     );
   }
@@ -284,13 +686,76 @@ export default function TestPage() {
           <CardContent className="pt-6 text-center">
             <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
             <h2 className="text-2xl font-bold mb-2">Assessment Complete!</h2>
-            <p className="text-muted-foreground mb-6">
+            <p className="text-muted-foreground mb-4">
               Thank you for completing the assessment. Your responses have been
               submitted and will be reviewed shortly.
             </p>
-            <p className="text-sm text-muted-foreground">
-              You may close this window now.
-            </p>
+
+            {/* Feedback Section */}
+            {!feedbackSubmitted ? (
+              <div className="mt-6 pt-6 border-t text-left">
+                <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-primary" />
+                  Help Us Improve
+                </h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Before you go, we&apos;d love your feedback: What would you suggest
+                  to improve this interview system?
+                </p>
+                <Textarea
+                  placeholder="Share your suggestions... (e.g., new question topics, UI improvements, technical terms that need explanation)"
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  className="min-h-[100px] mb-3"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleFeedbackSubmit}
+                    disabled={feedbackSubmitting || feedbackText.trim().length < 10}
+                    className="flex-1"
+                  >
+                    {feedbackSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        Submit Feedback
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setFeedbackSubmitted(true)}
+                  >
+                    Skip
+                  </Button>
+                </div>
+                {feedbackText.trim().length > 0 && feedbackText.trim().length < 10 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Please enter at least 10 characters
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="mt-6 pt-6 border-t">
+                {feedbackResult && (
+                  <div className={`p-4 rounded-lg ${feedbackResult.autoImplemented ? 'bg-green-500/10 border border-green-500/20' : 'bg-primary/10 border border-primary/20'}`}>
+                    <p className="text-sm">
+                      {feedbackResult.autoImplemented && (
+                        <Sparkles className="w-4 h-4 inline mr-2 text-green-500" />
+                      )}
+                      {feedbackResult.message}
+                    </p>
+                  </div>
+                )}
+                <p className="text-sm text-muted-foreground mt-4">
+                  You may close this window now.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -328,6 +793,18 @@ export default function TestPage() {
 
     return (
       <div className="min-h-screen bg-background">
+        {/* Saving Overlay */}
+        {showSavingOverlay && (
+          <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center">
+            <Card className="bg-background border shadow-lg">
+              <CardContent className="pt-6 flex items-center gap-3">
+                <Save className="w-5 h-5 animate-pulse text-primary" />
+                <span>Saving your answers...</span>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {/* Tab Switch Warning Dialog */}
         <Dialog open={showTabWarning} onOpenChange={setShowTabWarning}>
           <DialogContent>
@@ -354,13 +831,103 @@ export default function TestPage() {
           </DialogContent>
         </Dialog>
 
+        {/* Complete Test Confirmation Dialog */}
+        <Dialog open={showCompleteConfirm} onOpenChange={setShowCompleteConfirm}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-yellow-500" />
+                Submit Test?
+              </DialogTitle>
+              <DialogDescription className="pt-2">
+                Are you sure you want to submit your test? You cannot make changes after submission.
+              </DialogDescription>
+            </DialogHeader>
+
+            {incompleteInfo && (
+              <div className="space-y-3 py-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span>Overall Progress:</span>
+                  <span className={incompleteInfo.answered < incompleteInfo.total ? "text-yellow-500" : "text-green-500"}>
+                    {incompleteInfo.answered} / {incompleteInfo.total} answered
+                  </span>
+                </div>
+
+                {incompleteInfo.sections.some((s) => s.answered < s.total) && (
+                  <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                    <p className="text-sm text-yellow-500 font-medium mb-2">
+                      Incomplete Sections:
+                    </p>
+                    <ul className="text-sm space-y-1">
+                      {incompleteInfo.sections
+                        .filter((s) => s.answered < s.total)
+                        .map((s, i) => (
+                          <li key={i} className="flex justify-between text-muted-foreground">
+                            <span>{s.name}&apos;s Challenge</span>
+                            <span>{s.answered}/{s.total}</span>
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setShowCompleteConfirm(false)}>
+                Continue Editing
+              </Button>
+              <Button onClick={handleConfirmComplete}>
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Submit Test
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Batch Submit Confirmation Dialog */}
+        <Dialog open={showBatchSubmitConfirm} onOpenChange={setShowBatchSubmitConfirm}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Send className="w-5 h-5 text-blue-500" />
+                Submit All Answers?
+              </DialogTitle>
+              <DialogDescription className="pt-2">
+                This will submit all your draft answers for AI evaluation at once.
+                You can still edit and re-submit individual answers afterward.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-2">
+              <p className="text-sm text-muted-foreground">
+                <strong>{getUnsubmittedCount()}</strong> answers will be submitted for evaluation.
+              </p>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setShowBatchSubmitConfirm(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleBatchSubmit}>
+                <Send className="w-4 h-4 mr-2" />
+                Submit All Answers
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Header */}
         <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
           <div className="container flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <Brain className="w-6 h-6 text-primary" />
-                <span className="font-bold">KOS AI</span>
+                <Image
+                  src="/kos-quest-logo.png"
+                  alt="KOS Quest"
+                  width={32}
+                  height={32}
+                  className="rounded"
+                />
+                <span className="font-bold">KOS Quest</span>
               </div>
               <span className="text-sm text-muted-foreground">
                 {test.candidate_name}
@@ -368,6 +935,44 @@ export default function TestPage() {
             </div>
 
             <div className="flex items-center gap-4">
+              {/* Sync Status Indicator */}
+              <div className="hidden sm:flex items-center gap-1.5 text-xs">
+                {!isOnline ? (
+                  <span className="flex items-center gap-1 text-yellow-500">
+                    <WifiOff className="w-3.5 h-3.5" />
+                    Offline
+                  </span>
+                ) : syncStatus === "syncing" ? (
+                  <span className="flex items-center gap-1 text-blue-400 animate-pulse">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Syncing...
+                  </span>
+                ) : syncStatus === "synced" ? (
+                  <span className="flex items-center gap-1 text-green-500">
+                    <Cloud className="w-3.5 h-3.5" />
+                    Synced
+                  </span>
+                ) : syncStatus === "error" ? (
+                  <span className="flex items-center gap-1 text-red-500">
+                    <CloudOff className="w-3.5 h-3.5" />
+                    Sync failed
+                  </span>
+                ) : pendingCount > 0 ? (
+                  <button
+                    onClick={syncAllAnswers}
+                    className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Cloud className="w-3.5 h-3.5" />
+                    {pendingCount} pending
+                  </button>
+                ) : (
+                  <span className="flex items-center gap-1 text-muted-foreground">
+                    <Cloud className="w-3.5 h-3.5" />
+                    Saved
+                  </span>
+                )}
+              </div>
+
               {tabSwitchCount > 0 && (
                 <Badge variant="destructive" className="text-xs">
                   <Eye className="w-3 h-3 mr-1" />
@@ -389,7 +994,29 @@ export default function TestPage() {
                 />
               )}
 
-              <Button onClick={handleCompleteTest}>
+              {/* Batch Submit Button */}
+              {getUnsubmittedCount() > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowBatchSubmitConfirm(true)}
+                  disabled={isBatchSubmitting}
+                >
+                  {isBatchSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {batchSubmitProgress.current}/{batchSubmitProgress.total}
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4 mr-2" />
+                      Submit All ({getUnsubmittedCount()})
+                    </>
+                  )}
+                </Button>
+              )}
+
+              <Button onClick={handleCompleteTestClick}>
                 Submit Test
               </Button>
             </div>
@@ -407,13 +1034,13 @@ export default function TestPage() {
             <aside className="lg:sticky lg:top-24 lg:h-fit">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Sections</CardTitle>
+                  <CardTitle className="text-base">Your Trials</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <SectionNav
                     sections={sections}
                     currentSection={currentSection}
-                    onSectionChange={setCurrentSection}
+                    onSectionChange={handleSectionChange}
                   />
                 </CardContent>
               </Card>
@@ -423,10 +1050,10 @@ export default function TestPage() {
             <main className="space-y-6">
               <div>
                 <h2 className="text-2xl font-bold mb-1">
-                  {getCategoryLabel(currentSection)}
+                  {getQuestTitle(currentSection)}
                 </h2>
                 <p className="text-muted-foreground">
-                  {currentQuestions.length} questions in this section
+                  {currentQuestions.length} challenges in {getQuestDeity(currentSection)}&apos;s trial
                 </p>
               </div>
 
@@ -437,7 +1064,10 @@ export default function TestPage() {
                   questionNumber={index + 1}
                   totalQuestions={currentQuestions.length}
                   onAnswerSubmitted={handleAnswerSubmitted}
+                  onSaveStatusChange={handleSaveStatusChange}
+                  onLocalChange={handleLocalChange}
                   testToken={token}
+                  feedbackEnabled={feedbackEnabled}
                 />
               ))}
             </main>

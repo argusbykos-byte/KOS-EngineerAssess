@@ -19,6 +19,10 @@ class Candidate(Base):
     categories = Column(JSON, default=list)  # ["backend", "ml", "fullstack", etc.]
     difficulty = Column(String(50), default="mid")  # junior, mid, senior
 
+    # Challenge track (signal_processing or llm)
+    # This is determined by AI analysis of resume
+    track = Column(String(50), nullable=True)  # "signal_processing" or "llm"
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -38,3 +38,9 @@ class Test(Base):
     candidate = relationship("Candidate", back_populates="tests")
     questions = relationship("Question", back_populates="test", cascade="all, delete-orphan")
     report = relationship("Report", back_populates="test", uselist=False, cascade="all, delete-orphan")
+    challenge_submission = relationship(
+        "ChallengeSubmission",
+        back_populates="test",
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
