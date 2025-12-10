@@ -60,6 +60,8 @@ export interface Question {
   // Draft auto-save fields
   draft_answer?: string | null;
   draft_code?: string | null;
+  // Programming language for code questions (python, javascript, c, etc.)
+  language?: string | null;
 }
 
 export interface Answer {

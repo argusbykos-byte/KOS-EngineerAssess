@@ -51,6 +51,64 @@ When generating questions, prefer topics related to:
 """
 
 
+def detect_programming_language(text: str, code: str = None, category: str = None) -> str:
+    """Detect programming language from question text and code snippets.
+
+    Args:
+        text: Question text
+        code: Code snippet if any
+        category: Question category (coding, code_review, etc.)
+
+    Returns:
+        Language identifier for Monaco editor (python, javascript, c, typescript, etc.)
+    """
+    combined = f"{text or ''} {code or ''}".lower()
+
+    # Explicit language mentions
+    if "python" in combined or ".py" in combined:
+        return "python"
+    if "javascript" in combined or ".js" in combined or "node" in combined:
+        return "javascript"
+    if "typescript" in combined or ".ts" in combined:
+        return "typescript"
+    if "c++" in combined or ".cpp" in combined or "cpp" in combined:
+        return "cpp"
+    if "rust" in combined or ".rs" in combined:
+        return "rust"
+    if "go " in combined or "golang" in combined or ".go" in combined:
+        return "go"
+    if "java " in combined or ".java" in combined:
+        return "java"
+    if "sql" in combined:
+        return "sql"
+    if "bash" in combined or "shell" in combined or ".sh" in combined:
+        return "shell"
+
+    # C detection (after C++ to avoid false positives)
+    if (" c " in combined or "c code" in combined or ".c" in combined or
+        "firmware" in combined or "embedded c" in combined or
+        "microcontroller" in combined or "#include" in combined):
+        return "c"
+
+    # Syntax-based detection from code snippets
+    if code:
+        # Python patterns
+        if "def " in code or "import " in code or "print(" in code or "self." in code:
+            return "python"
+        # JavaScript patterns
+        if "const " in code or "let " in code or "function " in code or "=>" in code or "console.log" in code:
+            return "javascript"
+        # C/C++ patterns
+        if "#include" in code or "int main(" in code or "printf(" in code:
+            return "c"
+
+    # Default based on category
+    if category == "code_review":
+        return "javascript"  # Code reviews often use JS
+
+    return "python"  # Default to Python for coding questions
+
+
 class InterviewKnowledgeBase:
     """Manages the interview knowledge base with questions, rubrics, and terminology."""
 
@@ -677,7 +735,8 @@ Example output: ["Python", "FastAPI", "PostgreSQL", "AWS", "Machine Learning", "
             "coding": "Programming challenges that require writing code to solve problems",
             "code_review": "Buggy code snippets that need to be identified and fixed",
             "system_design": "Architecture and system design questions",
-            "signal_processing": "Digital signal processing questions (filters, FFT, DSP algorithms)"
+            "signal_processing": "Digital signal processing questions (filters, FFT, DSP algorithms)",
+            "general_engineering": "General software engineering concepts: algorithms, data structures, design patterns, testing strategies, debugging approaches, version control, APIs, databases, and software development best practices"
         }
 
         difficulty_guidance = {

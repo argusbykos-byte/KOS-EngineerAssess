@@ -1,15 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 from typing import List
 from datetime import datetime, timedelta
 import secrets
 from app.database import get_db
-from app.models import Candidate, Test, Question, Answer
+from app.models import Candidate, Test, Question, Answer, Report
 from app.models.test import TestStatus
 from app.schemas.test import TestCreate, TestResponse, TestWithQuestions
-from app.services.ai_service import ai_service
+from app.services.ai_service import ai_service, detect_programming_language
 
 router = APIRouter()
 
@@ -71,8 +71,11 @@ async def create_test(test_data: TestCreate, db: AsyncSession = Depends(get_db))
             sections.extend(["coding", "code_review", "system_design"])
         if "signal_processing" in candidate.categories:
             sections.append("signal_processing")
+        # Add general engineering for all technical candidates
+        if any(cat in ["backend", "ml", "fullstack", "python", "react", "signal_processing"] for cat in candidate.categories):
+            sections.append("general_engineering")
     else:
-        sections.extend(["coding", "code_review", "system_design"])
+        sections.extend(["coding", "code_review", "system_design", "general_engineering"])
 
     sections = list(set(sections))  # Remove duplicates
 
@@ -89,16 +92,29 @@ async def create_test(test_data: TestCreate, db: AsyncSession = Depends(get_db))
     for section_order, category in enumerate(sections):
         category_questions = questions_data.get(category, [])
         for q_order, q_data in enumerate(category_questions):
+            question_text = q_data.get("question_text", "")
+            question_code = q_data.get("question_code")
+
+            # Detect programming language for code-related questions
+            language = None
+            if category in ["coding", "code_review"]:
+                language = detect_programming_language(
+                    text=question_text,
+                    code=question_code,
+                    category=category
+                )
+
             question = Question(
                 test_id=test.id,
                 category=category,
                 section_order=section_order,
                 question_order=q_order,
-                question_text=q_data.get("question_text", ""),
-                question_code=q_data.get("question_code"),
+                question_text=question_text,
+                question_code=question_code,
                 expected_answer=q_data.get("expected_answer"),
                 hints=q_data.get("hints"),
-                max_score=100
+                max_score=100,
+                language=language
             )
             db.add(question)
             created_questions.append(question)
@@ -127,6 +143,45 @@ async def get_test(test_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Test not found")
 
     return test
+
+
+@router.delete("/{test_id}")
+async def delete_test(test_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a test and all associated data (answers, questions, reports)."""
+    # Check if test exists
+    result = await db.execute(select(Test).where(Test.id == test_id))
+    test = result.scalar_one_or_none()
+
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    # Get all question IDs for this test
+    questions_result = await db.execute(
+        select(Question.id).where(Question.test_id == test_id)
+    )
+    question_ids = [q[0] for q in questions_result.fetchall()]
+
+    # Delete answers for these questions
+    if question_ids:
+        await db.execute(
+            delete(Answer).where(Answer.question_id.in_(question_ids))
+        )
+
+    # Delete questions
+    await db.execute(
+        delete(Question).where(Question.test_id == test_id)
+    )
+
+    # Delete any reports for this test
+    await db.execute(
+        delete(Report).where(Report.test_id == test_id)
+    )
+
+    # Delete the test itself
+    await db.delete(test)
+    await db.commit()
+
+    return {"success": True, "message": f"Test {test_id} and all associated data deleted"}
 
 
 @router.get("/token/{access_token}", response_model=TestWithQuestions)
@@ -188,7 +243,8 @@ async def get_test_by_token(access_token: str, db: AsyncSession = Depends(get_db
             "max_score": question.max_score,
             "is_answered": is_answered,
             "draft_answer": draft_answer,
-            "draft_code": draft_code
+            "draft_code": draft_code,
+            "language": question.language
         })
 
     # Sort questions within each section
@@ -258,12 +314,14 @@ async def complete_test(access_token: str, db: AsyncSession = Depends(get_db)):
 
 
 from pydantic import BaseModel
-from typing import Literal
+from typing import Literal, Optional
 
 
 class AntiCheatEvent(BaseModel):
-    event_type: Literal["tab_switch", "paste_attempt"]
+    event_type: Literal["tab_switch", "paste_attempt", "code_copy", "code_paste"]
     timestamp: str
+    chars: Optional[int] = None
+    lines: Optional[int] = None
 
 
 @router.post("/token/{access_token}/anti-cheat")
@@ -272,7 +330,7 @@ async def log_anti_cheat_event(
     event: AntiCheatEvent,
     db: AsyncSession = Depends(get_db)
 ):
-    """Log an anti-cheat event (tab switch or paste attempt)."""
+    """Log an anti-cheat event (tab switch, paste attempt, code copy/paste)."""
     result = await db.execute(select(Test).where(Test.access_token == access_token))
     test = result.scalar_one_or_none()
 
@@ -287,8 +345,11 @@ async def log_anti_cheat_event(
         timestamps = test.tab_switch_timestamps or []
         timestamps.append(event.timestamp)
         test.tab_switch_timestamps = timestamps
-    elif event.event_type == "paste_attempt":
+    elif event.event_type in ["paste_attempt", "code_paste"]:
+        # Both textarea paste attempts and code editor pastes count as paste attempts
         test.paste_attempt_count = (test.paste_attempt_count or 0) + 1
+    # code_copy events are logged but don't increment any counter
+    # They're tracked for auditing purposes
 
     await db.commit()
 

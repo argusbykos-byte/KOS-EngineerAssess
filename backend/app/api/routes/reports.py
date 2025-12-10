@@ -74,7 +74,7 @@ async def generate_report(test_id: int, db: AsyncSession = Depends(get_db)):
         .where(Test.id == test_id)
     )
     result = await db.execute(query)
-    test = result.scalar_one_or_none()
+    test = result.scalars().first()
 
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
@@ -162,7 +162,7 @@ async def get_report(report_id: int, db: AsyncSession = Depends(get_db)):
         .where(Report.id == report_id)
     )
     result = await db.execute(query)
-    report = result.scalar_one_or_none()
+    report = result.scalars().first()
 
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
@@ -210,7 +210,7 @@ async def regenerate_report(test_id: int, db: AsyncSession = Depends(get_db)):
         .where(Test.id == test_id)
     )
     result = await db.execute(query)
-    test = result.scalar_one_or_none()
+    test = result.scalars().first()
 
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
@@ -299,7 +299,7 @@ async def get_report_by_test(test_id: int, db: AsyncSession = Depends(get_db)):
         .where(Report.test_id == test_id)
     )
     result = await db.execute(query)
-    report = result.scalar_one_or_none()
+    report = result.scalars().first()
 
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")

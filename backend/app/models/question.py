@@ -19,6 +19,7 @@ class Question(Base):
     expected_answer = Column(Text, nullable=True)
     hints = Column(JSON, nullable=True)
     max_score = Column(Integer, default=100)
+    language = Column(String(50), nullable=True)  # Programming language for code questions (python, javascript, c, etc.)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 

@@ -47,6 +47,7 @@ import {
   Plus,
   History,
   Calendar,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -91,11 +92,14 @@ export function CandidateTable({
   onRefresh,
 }: CandidateTableProps) {
   const [loading, setLoading] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState<number | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [generatedTestLink, setGeneratedTestLink] = useState<string>("");
   const [generatedForCandidate, setGeneratedForCandidate] = useState<string>("");
   const [expandedCandidates, setExpandedCandidates] = useState<Set<number>>(new Set());
+  const [showDeleteTestDialog, setShowDeleteTestDialog] = useState(false);
+  const [testToDelete, setTestToDelete] = useState<{ id: number; candidateName: string } | null>(null);
 
   const toggleExpanded = (candidateId: number) => {
     const newExpanded = new Set(expandedCandidates);
@@ -152,6 +156,27 @@ export function CandidateTable({
     setTimeout(() => setCopied(null), 3000);
   };
 
+  const handleDeleteTest = async () => {
+    if (!testToDelete) return;
+
+    setDeleting(testToDelete.id);
+    try {
+      await testsApi.delete(testToDelete.id);
+      onRefresh();
+    } catch (error) {
+      console.error("Error deleting test:", error);
+    } finally {
+      setDeleting(null);
+      setShowDeleteTestDialog(false);
+      setTestToDelete(null);
+    }
+  };
+
+  const confirmDeleteTest = (testId: number, candidateName: string) => {
+    setTestToDelete({ id: testId, candidateName });
+    setShowDeleteTestDialog(true);
+  };
+
   if (candidates.length === 0) {
     return (
       <Card>
@@ -166,7 +191,7 @@ export function CandidateTable({
   }
 
   // Render a single test row
-  const renderTestRow = (test: TestSummary, isLatest: boolean) => {
+  const renderTestRow = (test: TestSummary, isLatest: boolean, candidateName: string) => {
     const hasCompletedTest = test.status === "completed" || test.status === "expired";
 
     return (
@@ -241,6 +266,21 @@ export function CandidateTable({
                 </Button>
               </Link>
             )}
+
+            {/* Delete test button */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+              onClick={() => confirmDeleteTest(test.id, candidateName)}
+              disabled={deleting === test.id}
+            >
+              {deleting === test.id ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+            </Button>
           </div>
         </div>
       </div>
@@ -249,6 +289,52 @@ export function CandidateTable({
 
   return (
     <>
+      {/* Delete Test Confirmation Dialog */}
+      <Dialog open={showDeleteTestDialog} onOpenChange={setShowDeleteTestDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" />
+              Delete Interview?
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              This will permanently delete this interview for{" "}
+              <strong>{testToDelete?.candidateName}</strong>, including all
+              answers, scores, and any generated reports. This action cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeleteTestDialog(false);
+                setTestToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteTest}
+              disabled={deleting === testToDelete?.id}
+            >
+              {deleting === testToDelete?.id ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Delete Interview
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Test Link Dialog */}
       <Dialog open={showLinkDialog} onOpenChange={setShowLinkDialog}>
         <DialogContent>
@@ -379,12 +465,12 @@ export function CandidateTable({
                       </div>
 
                       {/* Always show latest test */}
-                      {latestTest && renderTestRow(latestTest, true)}
+                      {latestTest && renderTestRow(latestTest, true, candidate.name)}
 
                       {/* Older tests (collapsible) */}
                       {hasMultipleTests && (
                         <CollapsibleContent className="space-y-2 mt-2">
-                          {tests.slice(1).map((test) => renderTestRow(test, false))}
+                          {tests.slice(1).map((test) => renderTestRow(test, false, candidate.name))}
                         </CollapsibleContent>
                       )}
                     </Collapsible>

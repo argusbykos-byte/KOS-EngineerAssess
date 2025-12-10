@@ -14,7 +14,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { CodeEditor } from "./CodeEditor";
+import { CodeEditor, CopyPasteEvent } from "./CodeEditor";
 import { codeApi } from "@/lib/api";
 import {
   Play,
@@ -38,6 +38,8 @@ interface CodePlaygroundProps {
   height?: string;
   language?: string;
   showSampleData?: boolean;
+  onCopyDetected?: (event: CopyPasteEvent) => void;
+  onPasteDetected?: (event: CopyPasteEvent) => void;
 }
 
 interface SampleDataInfo {
@@ -51,9 +53,11 @@ export function CodePlayground({
   height = "250px",
   language = "python",
   showSampleData = true,
+  onCopyDetected,
+  onPasteDetected,
 }: CodePlaygroundProps) {
   const [code, setCode] = useState(initialCode);
-  const [output, setOutput] = useState<string>("");
+  const [output, setOutput] = useState<string>("none");
   const [error, setError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
@@ -62,7 +66,7 @@ export function CodePlayground({
 
   // Sample data state
   const [samples, setSamples] = useState<Record<string, SampleDataInfo>>({});
-  const [selectedSample, setSelectedSample] = useState<string>("");
+  const [selectedSample, setSelectedSample] = useState<string>("none");
   const [showSampleInfo, setShowSampleInfo] = useState(false);
   const [sampleData, setSampleData] = useState<Record<string, unknown> | null>(null);
   const [copied, setCopied] = useState(false);
@@ -175,8 +179,8 @@ export function CodePlayground({
                   <SelectValue placeholder="Load sample data..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No sample data</SelectItem>
-                  {Object.entries(samples).map(([key, info]) => (
+                  <SelectItem value="none">No sample data</SelectItem>
+                  {Object.entries(samples).map(([key]) => (
                     <SelectItem key={key} value={key}>
                       {key.replace(/_/g, " ")}
                     </SelectItem>
@@ -247,6 +251,8 @@ export function CodePlayground({
         onChange={handleCodeChange}
         language={language}
         height={height}
+        onCopyDetected={onCopyDetected}
+        onPasteDetected={onPasteDetected}
       />
 
       {/* Output Panel */}

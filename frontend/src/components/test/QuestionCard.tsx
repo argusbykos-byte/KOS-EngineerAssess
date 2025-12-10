@@ -19,7 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { CodeEditor } from "./CodeEditor";
+import { CodeEditor, CopyPasteEvent } from "./CodeEditor";
 import { CodePlayground } from "./CodePlayground";
 import { FeedbackPanel } from "./FeedbackPanel";
 import { Question } from "@/types";
@@ -45,7 +45,7 @@ interface QuestionCardProps {
   question: Question;
   questionNumber: number;
   totalQuestions: number;
-  onAnswerSubmitted: () => void;
+  onAnswerSubmitted: (questionId?: number, score?: number, feedback?: string) => void;
   onSaveStatusChange?: (questionId: number, hasUnsaved: boolean) => void;
   onLocalChange?: (questionId: number, answer: string, code: string) => void;
   testToken?: string;
@@ -70,39 +70,55 @@ export function QuestionCard({
   testToken,
   feedbackEnabled = false,
 }: QuestionCardProps) {
-  // Initialize from localStorage first, then fall back to server data
+  // Initialize answer state - prioritize server data for submitted questions
   const [answer, setAnswerState] = useState(() => {
+    // If already submitted, always use server's submitted answer
+    if (question.is_answered && question.answer?.candidate_answer) {
+      return question.answer.candidate_answer;
+    }
+
+    // For non-submitted questions, try localStorage first
     if (typeof window !== "undefined" && testToken) {
       try {
         const stored = localStorage.getItem(getStorageKey(testToken, question.id));
         if (stored) {
           const parsed = JSON.parse(stored);
-          // Use local if it's newer or has unsaved changes
-          if (!parsed.synced || parsed.answer || parsed.code) {
-            return parsed.answer || "";
+          // Use local if it has actual content
+          if (parsed.answer) {
+            return parsed.answer;
           }
         }
       } catch (e) {
         console.error("Error reading localStorage:", e);
       }
     }
+    // Fall back to draft or server data
     return question.draft_answer || question.answer?.candidate_answer || "";
   });
 
+  // Initialize code state - prioritize server data for submitted questions
   const [code, setCodeState] = useState(() => {
+    // If already submitted, always use server's submitted code
+    if (question.is_answered && question.answer?.candidate_code) {
+      return question.answer.candidate_code;
+    }
+
+    // For non-submitted questions, try localStorage first
     if (typeof window !== "undefined" && testToken) {
       try {
         const stored = localStorage.getItem(getStorageKey(testToken, question.id));
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (!parsed.synced || parsed.answer || parsed.code) {
-            return parsed.code || "";
+          // Use local if it has actual content
+          if (parsed.code) {
+            return parsed.code;
           }
         }
       } catch (e) {
         console.error("Error reading localStorage:", e);
       }
     }
+    // Fall back to draft or server data
     return question.draft_code || question.answer?.candidate_code || "";
   });
 
@@ -130,9 +146,6 @@ export function QuestionCard({
   const [timeSpent, setTimeSpent] = useState(0);
   const startTimeRef = useRef<number>(Date.now());
   const hasStartedRef = useRef(false);
-
-  const isCodeQuestion =
-    question.category === "coding" || question.category === "code_review";
 
   // Save to localStorage immediately (local-first)
   const saveToLocal = useCallback((newAnswer: string, newCode: string) => {
@@ -354,7 +367,7 @@ export function QuestionCard({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Handle paste blocking
+  // Handle paste blocking for textarea
   const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
     e.preventDefault();
     setPasteAttempted(true);
@@ -370,6 +383,37 @@ export function QuestionCard({
 
     setTimeout(() => setPasteAttempted(false), 3000);
   };
+
+  // Handle copy detection from code editor
+  const handleCodeCopy = useCallback((event: CopyPasteEvent) => {
+    if (testToken) {
+      testsApi
+        .logAntiCheatEvent(testToken, {
+          event_type: "code_copy",
+          timestamp: event.timestamp,
+          chars: event.chars,
+        })
+        .catch(console.error);
+    }
+  }, [testToken]);
+
+  // Handle paste detection from code editor
+  const handleCodePaste = useCallback((event: CopyPasteEvent) => {
+    setPasteAttempted(true);
+
+    if (testToken) {
+      testsApi
+        .logAntiCheatEvent(testToken, {
+          event_type: "code_paste",
+          timestamp: event.timestamp,
+          chars: event.chars,
+          lines: event.lines,
+        })
+        .catch(console.error);
+    }
+
+    setTimeout(() => setPasteAttempted(false), 3000);
+  }, [testToken]);
 
   const handleSubmitClick = () => {
     if (!answer.trim() && !code.trim()) return;
@@ -412,7 +456,8 @@ export function QuestionCard({
         }
       }
 
-      onAnswerSubmitted();
+      // Notify parent with question ID for submission tracking
+      onAnswerSubmitted(question.id);
     } catch (error) {
       console.error("Error submitting answer:", error);
     } finally {
@@ -593,27 +638,18 @@ export function QuestionCard({
               </div>
             </div>
 
-            {isCodeQuestion ? (
+            {question.category === "coding" ? (
+              // Use CodePlayground with run capability for coding questions
               <div className="space-y-4">
-                {question.category === "coding" ? (
-                  // Use CodePlayground with run capability for coding questions
-                  <CodePlayground
-                    initialCode={code}
-                    onChange={setCode}
-                    language="python"
-                    height="300px"
-                    showSampleData={true}
-                  />
-                ) : (
-                  // Use basic CodeEditor for code review (no execution needed)
-                  <CodeEditor
-                    value={code}
-                    onChange={setCode}
-                    language="javascript"
-                    readOnly={false}
-                    height="250px"
-                  />
-                )}
+                <CodePlayground
+                  initialCode={code}
+                  onChange={setCode}
+                  language={question.language || "python"}
+                  height="300px"
+                  showSampleData={true}
+                  onCopyDetected={handleCodeCopy}
+                  onPasteDetected={handleCodePaste}
+                />
                 <Textarea
                   placeholder="Explain your solution..."
                   value={answer}
@@ -622,7 +658,28 @@ export function QuestionCard({
                   rows={3}
                 />
               </div>
+            ) : question.category === "code_review" ? (
+              // Use basic CodeEditor for code review (no execution needed)
+              <div className="space-y-4">
+                <CodeEditor
+                  value={code}
+                  onChange={setCode}
+                  language={question.language || "javascript"}
+                  readOnly={false}
+                  height="250px"
+                  onCopyDetected={handleCodeCopy}
+                  onPasteDetected={handleCodePaste}
+                />
+                <Textarea
+                  placeholder="Explain the issues you found and your fixes..."
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  onPaste={handlePaste}
+                  rows={3}
+                />
+              </div>
             ) : (
+              // Plain textarea for brain_teaser, system_design, signal_processing, general_engineering
               <Textarea
                 placeholder="Type your answer here..."
                 value={answer}

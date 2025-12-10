@@ -119,6 +119,22 @@ export const QUEST_CATEGORIES: Record<string, QuestCategory> = {
     },
     mythology: "Prometheus, whose name means 'forethought', could see the future and gave humanity the tools to shape their destiny.",
   },
+  general_engineering: {
+    id: "general_engineering",
+    name: "General Engineering",
+    deity: "Daedalus",
+    title: "Daedalus' Workshop",
+    description: "Enter the legendary workshop of Daedalus, the master craftsman who built the Labyrinth and crafted wings to escape it. Demonstrate your foundational engineering knowledge across algorithms, design patterns, and software craftsmanship.",
+    shortDescription: "Foundational engineering concepts and practices",
+    icon: "Wrench",
+    color: {
+      primary: "#0891B2", // Cyan
+      secondary: "#06B6D4",
+      accent: "#22D3EE",
+      gradient: "from-cyan-600 to-sky-500",
+    },
+    mythology: "Daedalus was the greatest inventor and craftsman, whose works included the Labyrinth of Crete and the wings of Icarus.",
+  },
 };
 
 // Helper function to get quest category by ID

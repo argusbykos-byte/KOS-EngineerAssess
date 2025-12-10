@@ -3798,5 +3798,321 @@
         "follow_up_answer": "Feature engineering creates new features; feature selection chooses which features to keep. Selection methods: 1) Filter (correlation, mutual information), 2) Wrapper (forward/backward selection), 3) Embedded (L1 regularization, tree importance). Use selection to reduce overfitting, improve interpretability, and speed up training."
       }
     ]
+  },
+  "general_engineering_questions": {
+    "description": "General software engineering concepts applicable to all technical candidates",
+    "questions": [
+      {
+        "id": "ge_1",
+        "title": "Big O Notation",
+        "category": "algorithms",
+        "difficulty": ["easy", "medium"],
+        "question_text": "Explain Big O notation and time complexity. What are the common complexity classes and when would you expect to see each? Analyze the time complexity of finding duplicates in an array.",
+        "rubric": {
+          "definition": {
+            "points": 3,
+            "criteria": [
+              {"description": "Explains Big O as describing algorithm growth rate", "points": 1},
+              {"description": "Mentions it describes worst-case or average-case behavior", "points": 1},
+              {"description": "Explains that constants are ignored", "points": 1}
+            ]
+          },
+          "complexity_classes": {
+            "points": 4,
+            "criteria": [
+              {"description": "O(1) constant - array access, hash lookup", "points": 1},
+              {"description": "O(log n) logarithmic - binary search", "points": 1},
+              {"description": "O(n) linear - simple loop", "points": 1},
+              {"description": "O(n log n), O(n²) - sorting, nested loops", "points": 1}
+            ]
+          },
+          "analysis": {
+            "points": 3,
+            "criteria": [
+              {"description": "Naive approach: O(n²) with nested loops", "points": 1},
+              {"description": "Optimized: O(n) with hash set", "points": 1},
+              {"description": "Trade-off: time vs space", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**Big O Notation:**\nDescribes how algorithm runtime or space grows as input size (n) increases. Focuses on the dominant term, ignoring constants. Typically describes worst-case.\n\n**Common Classes:**\n- O(1): Constant - array index access, hash table lookup\n- O(log n): Logarithmic - binary search, balanced tree operations\n- O(n): Linear - single loop through data\n- O(n log n): Linearithmic - efficient sorting (merge, quick)\n- O(n²): Quadratic - nested loops\n- O(2^n): Exponential - brute force subset problems\n\n**Duplicate Finding:**\n```python\n# Naive O(n²)\nfor i in range(n):\n    for j in range(i+1, n):\n        if arr[i] == arr[j]: return True\n\n# Optimized O(n) with O(n) space\nseen = set()\nfor x in arr:\n    if x in seen: return True\n    seen.add(x)\n```\nTrade-off: Hash set uses O(n) extra space but reduces time from O(n²) to O(n).",
+        "follow_up": "What is amortized analysis and when is it useful?",
+        "follow_up_answer": "Amortized analysis averages time over a sequence of operations. Example: dynamic array append is O(1) amortized - usually O(1) but occasionally O(n) when resizing. Useful when rare expensive operations are 'paid for' by many cheap ones."
+      },
+      {
+        "id": "ge_2",
+        "title": "Design Patterns",
+        "category": "software_design",
+        "difficulty": ["medium", "hard"],
+        "question_text": "Explain the Singleton, Factory, and Observer design patterns. When would you use each, and what are potential drawbacks?",
+        "rubric": {
+          "singleton": {
+            "points": 3,
+            "criteria": [
+              {"description": "Single instance across application", "points": 1},
+              {"description": "Use cases: config, logging, connection pools", "points": 1},
+              {"description": "Drawbacks: testing difficulty, hidden dependencies", "points": 1}
+            ]
+          },
+          "factory": {
+            "points": 4,
+            "criteria": [
+              {"description": "Creates objects without exposing creation logic", "points": 1},
+              {"description": "Returns objects implementing common interface", "points": 1},
+              {"description": "Use case: multiple implementations of same interface", "points": 1},
+              {"description": "Drawback: can lead to many small classes", "points": 1}
+            ]
+          },
+          "observer": {
+            "points": 3,
+            "criteria": [
+              {"description": "One-to-many dependency between objects", "points": 1},
+              {"description": "Automatic notification on state changes", "points": 1},
+              {"description": "Use cases: event systems, MVC", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**Singleton:**\nEnsures only one instance of a class exists.\n```python\nclass Config:\n    _instance = None\n    def __new__(cls):\n        if cls._instance is None:\n            cls._instance = super().__new__(cls)\n        return cls._instance\n```\nUse: Database connections, logging, configuration.\nDrawbacks: Global state, hard to test, hidden dependencies.\n\n**Factory:**\nEncapsulates object creation, returns objects via interface.\n```python\ndef create_db(db_type):\n    if db_type == 'postgres': return PostgresDB()\n    if db_type == 'mysql': return MySQLDB()\n```\nUse: When creation logic is complex or varies by type.\nDrawbacks: Many classes, may over-engineer simple cases.\n\n**Observer:**\nSubject notifies observers of state changes.\n```python\nclass EventEmitter:\n    def __init__(self): self.listeners = []\n    def subscribe(self, fn): self.listeners.append(fn)\n    def emit(self, data):\n        for fn in self.listeners: fn(data)\n```\nUse: Event systems, reactive programming, MVC.\nDrawbacks: Memory leaks (dangling references), debugging complexity.",
+        "follow_up": "How does dependency injection relate to these patterns?",
+        "follow_up_answer": "DI inverts object creation control - instead of classes creating dependencies, they receive them. Addresses Singleton's testability issues by injecting mock instances. Factory patterns often used to implement DI containers."
+      },
+      {
+        "id": "ge_3",
+        "title": "Database Indexing",
+        "category": "databases",
+        "difficulty": ["easy", "medium", "hard"],
+        "question_text": "Explain database indexes and how they improve query performance. What is the difference between clustered and non-clustered indexes? When might an index hurt performance?",
+        "rubric": {
+          "basics": {
+            "points": 3,
+            "criteria": [
+              {"description": "Indexes are data structures for faster lookups", "points": 1},
+              {"description": "B-tree structure commonly used", "points": 1},
+              {"description": "Trade-off: faster reads vs slower writes", "points": 1}
+            ]
+          },
+          "clustered_vs_nonclustered": {
+            "points": 4,
+            "criteria": [
+              {"description": "Clustered: rows physically ordered by index key", "points": 1},
+              {"description": "Only one clustered index per table", "points": 1},
+              {"description": "Non-clustered: separate structure pointing to rows", "points": 1},
+              {"description": "Can have multiple non-clustered indexes", "points": 1}
+            ]
+          },
+          "when_hurts": {
+            "points": 3,
+            "criteria": [
+              {"description": "Heavy write workloads - index maintenance overhead", "points": 1},
+              {"description": "Low cardinality columns - not selective enough", "points": 1},
+              {"description": "Small tables - full scan may be faster", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**Database Indexes:**\nData structures (usually B-trees) that allow O(log n) lookups instead of O(n) full scans.\n\n**How They Work:**\n- Store sorted references to rows\n- Enable binary search-like access\n- Created on columns frequently used in WHERE, JOIN, ORDER BY\n\n**Clustered Index:**\n- Determines physical order of data on disk\n- One per table (usually primary key)\n- Range queries very efficient\n- Insert in middle requires data movement\n\n**Non-Clustered Index:**\n- Separate structure pointing to data rows\n- Multiple per table allowed\n- Contains index key + row pointer\n- Extra hop to get actual data\n\n**When Indexes Hurt:**\n1. Write-heavy workloads: Every INSERT/UPDATE/DELETE must update indexes\n2. Low cardinality: Index on boolean column not selective\n3. Small tables: Index overhead exceeds benefit\n4. Wide composite indexes: Storage and maintenance cost\n5. Queries don't use them: Unused indexes waste space",
+        "follow_up": "What is a covering index and how does it improve performance?",
+        "follow_up_answer": "A covering index contains all columns needed by a query in the index itself. The database can satisfy the query from the index alone without accessing the table data (avoiding 'bookmark lookups'). Example: CREATE INDEX idx_user_email ON users(email) INCLUDE (name, created_at)."
+      },
+      {
+        "id": "ge_4",
+        "title": "REST API Design",
+        "category": "api_design",
+        "difficulty": ["easy", "medium"],
+        "question_text": "What are the principles of RESTful API design? Explain HTTP methods, status codes, and best practices for designing endpoints. How would you design an API for a blog with posts and comments?",
+        "rubric": {
+          "principles": {
+            "points": 3,
+            "criteria": [
+              {"description": "Stateless - each request contains all info needed", "points": 1},
+              {"description": "Resource-based URLs using nouns", "points": 1},
+              {"description": "Uniform interface - consistent structure", "points": 1}
+            ]
+          },
+          "http_methods": {
+            "points": 3,
+            "criteria": [
+              {"description": "GET for read, POST for create", "points": 1},
+              {"description": "PUT/PATCH for update, DELETE for remove", "points": 1},
+              {"description": "Idempotency of GET, PUT, DELETE", "points": 1}
+            ]
+          },
+          "status_codes": {
+            "points": 2,
+            "criteria": [
+              {"description": "2xx success, 4xx client error, 5xx server error", "points": 1},
+              {"description": "Specific codes: 201 Created, 404 Not Found, 401/403", "points": 1}
+            ]
+          },
+          "design": {
+            "points": 2,
+            "criteria": [
+              {"description": "Nested resources: /posts/{id}/comments", "points": 1},
+              {"description": "Pagination, filtering considerations", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**REST Principles:**\n- Stateless: No session state on server\n- Resource-based: URLs identify resources (nouns not verbs)\n- Uniform interface: Consistent HTTP semantics\n- Client-server separation\n\n**HTTP Methods:**\n- GET: Read (idempotent, safe)\n- POST: Create (not idempotent)\n- PUT: Full update (idempotent)\n- PATCH: Partial update\n- DELETE: Remove (idempotent)\n\n**Status Codes:**\n- 200 OK, 201 Created, 204 No Content\n- 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found\n- 500 Internal Server Error\n\n**Blog API Design:**\n```\nGET    /posts           - List posts (paginated)\nGET    /posts/{id}      - Get single post\nPOST   /posts           - Create post\nPUT    /posts/{id}      - Update post\nDELETE /posts/{id}      - Delete post\n\nGET    /posts/{id}/comments    - List comments on post\nPOST   /posts/{id}/comments    - Add comment to post\nGET    /comments/{id}          - Get single comment\nDELETE /comments/{id}          - Delete comment\n\n# Query params: /posts?page=2&limit=20&author=john\n```",
+        "follow_up": "How do GraphQL and REST differ, and when would you choose each?",
+        "follow_up_answer": "REST: Multiple endpoints, fixed response shapes, HTTP caching, simpler. GraphQL: Single endpoint, client specifies data shape, avoids over/under-fetching, good for complex relationships and mobile (bandwidth). Choose REST for simple CRUD and caching; GraphQL for complex data needs and multiple clients."
+      },
+      {
+        "id": "ge_5",
+        "title": "Testing Strategies",
+        "category": "testing",
+        "difficulty": ["easy", "medium"],
+        "question_text": "Explain the testing pyramid and different types of tests (unit, integration, e2e). What makes a good unit test? How do you decide what to test and what to mock?",
+        "rubric": {
+          "pyramid": {
+            "points": 3,
+            "criteria": [
+              {"description": "Many unit tests at base (fast, cheap)", "points": 1},
+              {"description": "Fewer integration tests in middle", "points": 1},
+              {"description": "Few e2e tests at top (slow, expensive)", "points": 1}
+            ]
+          },
+          "test_types": {
+            "points": 3,
+            "criteria": [
+              {"description": "Unit: single function/class in isolation", "points": 1},
+              {"description": "Integration: multiple components together", "points": 1},
+              {"description": "E2E: full system from user perspective", "points": 1}
+            ]
+          },
+          "good_unit_test": {
+            "points": 2,
+            "criteria": [
+              {"description": "Fast, isolated, deterministic", "points": 1},
+              {"description": "Clear arrange-act-assert structure", "points": 1}
+            ]
+          },
+          "mocking": {
+            "points": 2,
+            "criteria": [
+              {"description": "Mock external dependencies (DB, APIs)", "points": 1},
+              {"description": "Don't over-mock - test real behavior where possible", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**Testing Pyramid:**\n```\n      /\\  E2E (few)\n     /  \\ - Full user flows\n    /____\\ - Slow, brittle\n   /      \\ Integration (some)\n  /        \\ - Component interactions\n /          \\ - API, DB tests\n/______________\\ Unit (many)\n                 - Fast, isolated\n                 - Single function/class\n```\n\n**Test Types:**\n- Unit: Test function in isolation, mock dependencies\n- Integration: Test modules working together, real DB/APIs\n- E2E: Full user journey through actual UI\n\n**Good Unit Test Characteristics:**\n- Fast (<100ms)\n- Isolated (no shared state)\n- Deterministic (same result every run)\n- Clear: Arrange → Act → Assert\n- Tests one behavior\n\n**What to Mock:**\n- External services (APIs, email)\n- Databases (for unit tests)\n- Time, randomness\n\n**What NOT to Mock:**\n- The thing you're testing\n- Simple value objects\n- Your own code in integration tests",
+        "follow_up": "What is TDD and what are its benefits?",
+        "follow_up_answer": "Test-Driven Development: Write test first (red), implement to pass (green), refactor (clean). Benefits: Better design (testable code), documentation via tests, confidence in refactoring, fewer bugs. Drawback: Slower initial development, learning curve."
+      },
+      {
+        "id": "ge_6",
+        "title": "Git Workflow",
+        "category": "version_control",
+        "difficulty": ["easy"],
+        "question_text": "Explain common Git workflows including branching strategies. What is a merge vs rebase? How do you handle merge conflicts? What is a pull request?",
+        "rubric": {
+          "branching": {
+            "points": 3,
+            "criteria": [
+              {"description": "Feature branches from main/develop", "points": 1},
+              {"description": "GitFlow, trunk-based, or GitHub Flow", "points": 1},
+              {"description": "Describes branch naming conventions", "points": 1}
+            ]
+          },
+          "merge_rebase": {
+            "points": 4,
+            "criteria": [
+              {"description": "Merge: creates merge commit, preserves history", "points": 1},
+              {"description": "Rebase: replays commits on new base, linear history", "points": 1},
+              {"description": "When to use each", "points": 1},
+              {"description": "Don't rebase public/shared branches", "points": 1}
+            ]
+          },
+          "conflicts": {
+            "points": 2,
+            "criteria": [
+              {"description": "Identifies conflicting changes in files", "points": 1},
+              {"description": "Manual resolution and testing", "points": 1}
+            ]
+          },
+          "pr": {
+            "points": 1,
+            "criteria": [
+              {"description": "Code review mechanism before merging", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**Common Workflows:**\n- GitHub Flow: main + feature branches, deploy from main\n- GitFlow: main, develop, feature, release, hotfix branches\n- Trunk-based: Short-lived branches, frequent merges\n\n**Merge vs Rebase:**\n```\nMerge:              Rebase:\n  A---B---C main      A---B---C main\n       \\                        \\\n        D---E feature            D'---E' feature\n\nMerge creates M      Rebase replays commits\n```\n- Merge: Preserves history, creates merge commit\n- Rebase: Linear history, rewrites commits\n- Use rebase for local cleanup, merge for shared branches\n- Never rebase pushed commits (rewrites history)\n\n**Merge Conflicts:**\n1. Git marks conflicts with <<<<<<, =======, >>>>>>>\n2. Manually edit to resolve\n3. git add resolved files\n4. git commit (for merge) or git rebase --continue\n\n**Pull Request:**\n- Mechanism for code review before merge\n- Shows diff, allows comments, runs CI\n- Requires approvals before merging",
+        "follow_up": "What is git cherry-pick and when would you use it?",
+        "follow_up_answer": "Cherry-pick applies a specific commit from one branch to another. Use cases: backporting a bugfix to release branch, picking specific features without merging entire branch, recovering work from abandoned branches."
+      },
+      {
+        "id": "ge_7",
+        "title": "Data Structures: Hash Tables",
+        "category": "data_structures",
+        "difficulty": ["medium"],
+        "question_text": "Explain how hash tables work, including collision handling. What is the time complexity for common operations? When would you choose a hash table over other data structures?",
+        "rubric": {
+          "how_works": {
+            "points": 4,
+            "criteria": [
+              {"description": "Hash function maps keys to array indices", "points": 1},
+              {"description": "Load factor and resizing", "points": 1},
+              {"description": "Collision handling: chaining (linked lists)", "points": 1},
+              {"description": "Collision handling: open addressing", "points": 1}
+            ]
+          },
+          "complexity": {
+            "points": 3,
+            "criteria": [
+              {"description": "Average O(1) for insert, lookup, delete", "points": 1},
+              {"description": "Worst case O(n) with many collisions", "points": 1},
+              {"description": "Amortized O(1) with proper resizing", "points": 1}
+            ]
+          },
+          "when_use": {
+            "points": 3,
+            "criteria": [
+              {"description": "When fast lookup by key is needed", "points": 1},
+              {"description": "Not when order matters", "points": 1},
+              {"description": "Examples: caching, counting, deduplication", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**How Hash Tables Work:**\n1. Hash function converts key to integer\n2. Integer % array_size = bucket index\n3. Store value at that bucket\n\n**Collision Handling:**\n- Chaining: Each bucket is linked list\n- Open Addressing: Probe for next empty slot\n  - Linear probing: check i+1, i+2, ...\n  - Quadratic: check i+1, i+4, i+9, ...\n  - Double hashing: use second hash function\n\n**Load Factor:**\n- α = n/capacity\n- When α > threshold (e.g., 0.7), resize and rehash\n- Prevents excessive collisions\n\n**Time Complexity:**\n- Average: O(1) insert, lookup, delete\n- Worst: O(n) if hash function causes clustering\n- Space: O(n)\n\n**When to Use:**\n✓ Fast key-value lookups (caching, memoization)\n✓ Counting frequencies\n✓ Deduplication\n✗ Need ordered data (use balanced tree)\n✗ Range queries (use tree or skip list)\n✗ Memory constrained (overhead of empty slots)",
+        "follow_up": "What makes a good hash function?",
+        "follow_up_answer": "Good hash function: 1) Deterministic (same input → same output), 2) Uniform distribution (minimize collisions), 3) Fast to compute. For strings: djb2, murmur3, FNV-1a. For security (passwords): bcrypt, argon2 (slow by design)."
+      },
+      {
+        "id": "ge_8",
+        "title": "Debugging Strategies",
+        "category": "debugging",
+        "difficulty": ["easy", "medium"],
+        "question_text": "Describe your approach to debugging a complex bug. What tools and techniques do you use? How do you debug issues that only occur in production?",
+        "rubric": {
+          "approach": {
+            "points": 3,
+            "criteria": [
+              {"description": "Reproduce the bug first", "points": 1},
+              {"description": "Binary search / bisect to isolate", "points": 1},
+              {"description": "Form hypothesis, test systematically", "points": 1}
+            ]
+          },
+          "tools": {
+            "points": 3,
+            "criteria": [
+              {"description": "Debugger (breakpoints, stepping)", "points": 1},
+              {"description": "Logging, print statements", "points": 1},
+              {"description": "Profilers, monitoring tools", "points": 1}
+            ]
+          },
+          "production": {
+            "points": 4,
+            "criteria": [
+              {"description": "Logging and metrics collection", "points": 1},
+              {"description": "Error tracking (Sentry, etc.)", "points": 1},
+              {"description": "Reproduce in staging with prod data", "points": 1},
+              {"description": "Feature flags for safe rollback", "points": 1}
+            ]
+          }
+        },
+        "sample_strong_answer": "**Debugging Approach:**\n1. **Reproduce**: Get consistent repro steps\n2. **Isolate**: Narrow down where bug occurs\n   - Binary search: comment out half the code\n   - Git bisect: find breaking commit\n3. **Hypothesize**: Form theory based on symptoms\n4. **Test**: Verify hypothesis with minimal change\n5. **Fix & Verify**: Ensure fix doesn't break else\n\n**Tools:**\n- Debugger: Breakpoints, step through, inspect vars\n- Logging: Strategic log statements\n- Print debugging: Quick and dirty\n- Profilers: For performance bugs\n- Memory analyzers: For leaks\n- Network tools: curl, Postman, browser devtools\n\n**Production Debugging:**\n- Structured logging (JSON, log levels)\n- Error tracking (Sentry, Rollbar) - stack traces\n- APM tools (Datadog, New Relic) - traces, metrics\n- Replicate: Pull prod data to staging\n- Feature flags: Disable suspected code\n- Canary deploys: Roll back quickly\n- Post-mortems: Document root cause",
+        "follow_up": "What is rubber duck debugging?",
+        "follow_up_answer": "Explaining your code line-by-line to an inanimate object (or colleague). Forces you to articulate assumptions and often reveals the bug during explanation. Based on the book 'The Pragmatic Programmer'. Surprisingly effective for catching logical errors."
+      }
+    ]
   }
 }

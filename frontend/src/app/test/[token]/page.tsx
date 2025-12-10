@@ -53,6 +53,7 @@ import {
   WifiOff,
   Send,
   MessageSquare,
+  Wrench,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -60,13 +61,58 @@ import { Textarea } from "@/components/ui/textarea";
 
 type ViewState = "loading" | "welcome" | "test" | "completed" | "expired" | "error";
 
+// localStorage keys for test state persistence
+const TEST_STATE_KEY_PREFIX = "kos_test_state_";
+const SUBMISSION_STATE_KEY_PREFIX = "kos_submission_state_";
+
+function getTestStateKey(token: string): string {
+  return `${TEST_STATE_KEY_PREFIX}${token}`;
+}
+
+function getSubmissionStateKey(token: string): string {
+  return `${SUBMISSION_STATE_KEY_PREFIX}${token}`;
+}
+
+interface PersistedTestState {
+  currentSection: string;
+  feedbackEnabled: boolean;
+  timestamp: number;
+}
+
+interface SubmissionState {
+  [questionId: number]: {
+    submitted: boolean;
+    score?: number;
+    feedback?: string;
+    submittedAt: number;
+  };
+}
+
 export default function TestPage() {
   const params = useParams();
   const token = params.token as string;
 
   const [viewState, setViewState] = useState<ViewState>("loading");
   const [test, setTest] = useState<TestWithQuestions | null>(null);
-  const [currentSection, setCurrentSection] = useState<string>("");
+
+  // Initialize currentSection from localStorage if available
+  const [currentSection, setCurrentSection] = useState<string>(() => {
+    if (typeof window !== "undefined" && token) {
+      try {
+        const stored = localStorage.getItem(getTestStateKey(token));
+        if (stored) {
+          const parsed: PersistedTestState = JSON.parse(stored);
+          // Only restore if state is recent (within 24 hours)
+          if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+            return parsed.currentSection || "";
+          }
+        }
+      } catch (e) {
+        console.error("Error reading test state from localStorage:", e);
+      }
+    }
+    return "";
+  });
   const [error, setError] = useState<string>("");
   const [isStarting, setIsStarting] = useState(false);
 
@@ -99,6 +145,21 @@ export default function TestPage() {
   // Live feedback state - persisted in localStorage (default ON for better UX)
   const [feedbackEnabled, setFeedbackEnabled] = useState(() => {
     if (typeof window !== "undefined") {
+      // Try test-specific state first
+      if (token) {
+        try {
+          const stored = localStorage.getItem(getTestStateKey(token));
+          if (stored) {
+            const parsed: PersistedTestState = JSON.parse(stored);
+            if (Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000 && parsed.feedbackEnabled !== undefined) {
+              return parsed.feedbackEnabled;
+            }
+          }
+        } catch (e) {
+          console.error("Error reading feedback state:", e);
+        }
+      }
+      // Fall back to global preference
       const stored = localStorage.getItem("kos_feedback_enabled");
       // Default to true if not set
       return stored === null ? true : stored === "true";
@@ -110,7 +171,80 @@ export default function TestPage() {
   const handleFeedbackToggle = (enabled: boolean) => {
     setFeedbackEnabled(enabled);
     localStorage.setItem("kos_feedback_enabled", enabled.toString());
+    // Also save to test-specific state
+    saveTestState(currentSection, enabled);
   };
+
+  // Submission state for tracking AI evaluation results (variable unused but setter is used)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [submissionState, setSubmissionState] = useState<SubmissionState>(() => {
+    if (typeof window !== "undefined" && token) {
+      try {
+        const stored = localStorage.getItem(getSubmissionStateKey(token));
+        if (stored) {
+          return JSON.parse(stored);
+        }
+      } catch (e) {
+        console.error("Error reading submission state:", e);
+      }
+    }
+    return {};
+  });
+
+  // Save test state to localStorage
+  const saveTestState = useCallback((section: string, feedback?: boolean) => {
+    if (!token) return;
+    try {
+      const state: PersistedTestState = {
+        currentSection: section,
+        feedbackEnabled: feedback ?? feedbackEnabled,
+        timestamp: Date.now(),
+      };
+      localStorage.setItem(getTestStateKey(token), JSON.stringify(state));
+    } catch (e) {
+      console.error("Error saving test state:", e);
+    }
+  }, [token, feedbackEnabled]);
+
+  // Save submission state to localStorage
+  const saveSubmissionState = useCallback((questionId: number, data: { submitted: boolean; score?: number; feedback?: string }) => {
+    if (!token) return;
+    setSubmissionState(prev => {
+      const newState = {
+        ...prev,
+        [questionId]: {
+          ...data,
+          submittedAt: Date.now(),
+        },
+      };
+      try {
+        localStorage.setItem(getSubmissionStateKey(token), JSON.stringify(newState));
+      } catch (e) {
+        console.error("Error saving submission state:", e);
+      }
+      return newState;
+    });
+  }, [token]);
+
+  // Clear test state on completion
+  const clearTestState = useCallback(() => {
+    if (!token) return;
+    try {
+      localStorage.removeItem(getTestStateKey(token));
+      localStorage.removeItem(getSubmissionStateKey(token));
+      // Also clear any question-specific localStorage entries
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.includes(`kos_quest_answer_${token}`)) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+    } catch (e) {
+      console.error("Error clearing test state:", e);
+    }
+  }, [token]);
 
   // Anti-cheat state
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
@@ -136,20 +270,28 @@ export default function TestPage() {
       } else if (response.data.status === "in_progress") {
         setViewState("test");
         const sections = Object.keys(response.data.questions_by_section);
-        if (sections.length > 0 && !currentSection) {
-          setCurrentSection(sections[0]);
+        if (sections.length > 0) {
+          // Check if currentSection (from localStorage) is valid for this test
+          if (!currentSection || !sections.includes(currentSection)) {
+            setCurrentSection(sections[0]);
+            saveTestState(sections[0]);
+          }
         }
       } else if (response.data.status === "completed") {
         setViewState("completed");
+        // Clear persisted state on completion
+        clearTestState();
       } else if (response.data.status === "expired") {
         setViewState("expired");
+        // Clear persisted state on expiry
+        clearTestState();
       }
     } catch (err) {
       console.error("Error fetching test:", err);
       setError("Test not found or invalid link");
       setViewState("error");
     }
-  }, [token, currentSection]);
+  }, [token, currentSection, saveTestState, clearTestState]);
 
   useEffect(() => {
     fetchTest();
@@ -282,6 +424,8 @@ export default function TestPage() {
     } else {
       setCurrentSection(newSection);
     }
+    // Persist section change to localStorage
+    saveTestState(newSection);
   };
 
   const handleStartTest = async () => {
@@ -333,6 +477,8 @@ export default function TestPage() {
 
     try {
       await testsApi.complete(token);
+      // Clear persisted state on completion
+      clearTestState();
       setViewState("completed");
     } catch (err) {
       console.error("Error completing test:", err);
@@ -345,13 +491,18 @@ export default function TestPage() {
 
     try {
       await testsApi.complete(token);
+      // Clear persisted state on expiry
+      clearTestState();
       setViewState("expired");
     } catch (err) {
       console.error("Error on time expire:", err);
     }
   };
 
-  const handleAnswerSubmitted = () => {
+  const handleAnswerSubmitted = (questionId?: number, score?: number, feedback?: string) => {
+    if (questionId) {
+      saveSubmissionState(questionId, { submitted: true, score, feedback });
+    }
     fetchTest();
   };
 
@@ -500,6 +651,7 @@ export default function TestPage() {
     code_review: Flame,
     system_design: Building2,
     signal_processing: Activity,
+    general_engineering: Wrench,
   };
 
   if (viewState === "welcome" && test) {
