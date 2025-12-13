@@ -13,8 +13,6 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from PIL import Image as PILImage
 
-from app.config import settings
-
 
 # KOS company info - Updated address
 KOS_COMPANY_NAME = "KOS (Kernel of Science)"
@@ -269,7 +267,7 @@ class CertificateService:
     """Service for certificate generation and management."""
 
     def __init__(self):
-        self.base_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3000')
+        self.base_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 
     def get_verification_url(self, certificate_id: str) -> str:
         """Generate verification URL for certificate.

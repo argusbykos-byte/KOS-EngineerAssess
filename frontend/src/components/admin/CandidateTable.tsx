@@ -111,12 +111,17 @@ export function CandidateTable({
     setExpandedCandidates(newExpanded);
   };
 
+  // Use configured frontend URL for shareable links, fallback to window.location.origin
+  const getBaseUrl = () => {
+    return process.env.NEXT_PUBLIC_FRONTEND_URL || window.location.origin;
+  };
+
   const handleCreateTest = async (candidateId: number) => {
     setLoading(candidateId);
     try {
       const candidate = candidates.find(c => c.id === candidateId);
       const response = await testsApi.create(candidateId);
-      const testLink = `${window.location.origin}/test/${response.data.access_token}`;
+      const testLink = `${getBaseUrl()}/test/${response.data.access_token}`;
 
       // Show dialog with the link
       setGeneratedTestLink(testLink);
@@ -150,7 +155,7 @@ export function CandidateTable({
   };
 
   const copyTestLink = async (token: string) => {
-    const testLink = `${window.location.origin}/test/${token}`;
+    const testLink = `${getBaseUrl()}/test/${token}`;
     await navigator.clipboard.writeText(testLink);
     setCopied(token);
     setTimeout(() => setCopied(null), 3000);
