@@ -251,6 +251,9 @@ export default function TestPage() {
   const [showTabWarning, setShowTabWarning] = useState(false);
   const isTestActive = useRef(false);
 
+  // Mutex to prevent multiple simultaneous complete calls
+  const isCompletingRef = useRef(false);
+
   // Improvement feedback state (shown on completion)
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
@@ -468,6 +471,10 @@ export default function TestPage() {
   };
 
   const handleConfirmComplete = async () => {
+    // Prevent multiple simultaneous complete calls
+    if (isCompletingRef.current) return;
+    isCompletingRef.current = true;
+
     setShowCompleteConfirm(false);
 
     // Save all questions first
@@ -482,10 +489,21 @@ export default function TestPage() {
       setViewState("completed");
     } catch (err) {
       console.error("Error completing test:", err);
+      // Still transition to completed if already completed (idempotent)
+      if (viewState !== "completed") {
+        setViewState("completed");
+        clearTestState();
+      }
+    } finally {
+      isCompletingRef.current = false;
     }
   };
 
   const handleTimeExpired = async () => {
+    // Prevent multiple simultaneous complete calls
+    if (isCompletingRef.current) return;
+    isCompletingRef.current = true;
+
     // Save all before expiry
     await saveAllQuestionsInSection();
 
@@ -496,6 +514,13 @@ export default function TestPage() {
       setViewState("expired");
     } catch (err) {
       console.error("Error on time expire:", err);
+      // Still transition to expired if already completed (idempotent)
+      if (viewState !== "expired" && viewState !== "completed") {
+        setViewState("expired");
+        clearTestState();
+      }
+    } finally {
+      isCompletingRef.current = false;
     }
   };
 

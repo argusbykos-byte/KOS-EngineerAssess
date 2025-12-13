@@ -294,15 +294,16 @@ async def start_test(access_token: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("/token/{access_token}/complete", response_model=TestResponse)
 async def complete_test(access_token: str, db: AsyncSession = Depends(get_db)):
-    """Complete a test (candidate action)."""
+    """Complete a test (candidate action). Idempotent - returns success if already completed."""
     result = await db.execute(select(Test).where(Test.access_token == access_token))
     test = result.scalar_one_or_none()
 
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
 
+    # Idempotent: if already completed, just return the test without error
     if test.status == TestStatus.COMPLETED.value:
-        raise HTTPException(status_code=400, detail="Test already completed")
+        return test
 
     test.status = TestStatus.COMPLETED.value
     test.end_time = datetime.utcnow()
