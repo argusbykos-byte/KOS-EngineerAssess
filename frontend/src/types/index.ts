@@ -34,6 +34,12 @@ export interface Test {
   created_at: string;
 }
 
+export interface BreakHistoryEntry {
+  start: string;
+  end: string | null;
+  duration_seconds: number;
+}
+
 export interface TestWithQuestions extends Test {
   candidate_name: string;
   candidate_email: string;
@@ -41,6 +47,14 @@ export interface TestWithQuestions extends Test {
   difficulty: string;
   questions_by_section: Record<string, Question[]>;
   time_remaining_seconds: number | null;
+  // Break info
+  total_break_time_seconds: number;
+  used_break_time_seconds: number;
+  break_count: number;
+  is_on_break: boolean;
+  remaining_break_time_seconds: number;
+  max_single_break_seconds: number;
+  break_history: BreakHistoryEntry[];
 }
 
 export interface Question {
@@ -103,9 +117,14 @@ export interface Report {
   tab_switch_count?: number | null;
   tab_switch_timestamps?: string[] | null;
   paste_attempt_count?: number | null;
+  // Break usage data
+  total_break_time_seconds?: number | null;
+  used_break_time_seconds?: number | null;
+  break_count?: number | null;
+  break_history?: BreakHistoryEntry[] | null;
 }
 
-export type TestStatus = "pending" | "in_progress" | "completed" | "expired";
+export type TestStatus = "pending" | "in_progress" | "on_break" | "completed" | "expired";
 
 export type Difficulty = "junior" | "mid" | "senior";
 

@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"
     SECRET_KEY: str = "kos-engineer-assess-secret-key-change-in-production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    FRONTEND_URL: str = "http://localhost:3000"
 
     class Config:
         env_file = ".env"

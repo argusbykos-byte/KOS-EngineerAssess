@@ -7,6 +7,12 @@ class TestCreate(BaseModel):
     candidate_id: int
 
 
+class BreakHistoryEntry(BaseModel):
+    start: str  # ISO timestamp
+    end: Optional[str] = None  # ISO timestamp, null if break ongoing
+    duration_seconds: int
+
+
 class TestResponse(BaseModel):
     id: int
     candidate_id: int
@@ -17,6 +23,12 @@ class TestResponse(BaseModel):
     status: str
     current_section: Optional[str] = None
     created_at: datetime
+
+    # Break info
+    total_break_time_seconds: int = 0
+    used_break_time_seconds: int = 0
+    break_count: int = 0
+    is_on_break: bool = False
 
     class Config:
         from_attributes = True
@@ -46,3 +58,24 @@ class TestWithQuestions(TestResponse):
     difficulty: str
     questions_by_section: dict  # category -> list of questions
     time_remaining_seconds: Optional[int] = None
+
+    # Break info for frontend
+    remaining_break_time_seconds: int = 0
+    max_single_break_seconds: int = 1200  # 20 minutes default
+    break_history: List[BreakHistoryEntry] = []
+
+
+class BreakStartResponse(BaseModel):
+    success: bool
+    message: str
+    remaining_break_time_seconds: int
+    max_single_break_seconds: int
+    break_start_time: Optional[datetime] = None
+
+
+class BreakEndResponse(BaseModel):
+    success: bool
+    message: str
+    break_duration_seconds: int
+    remaining_break_time_seconds: int
+    total_used_break_time_seconds: int

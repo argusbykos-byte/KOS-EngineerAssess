@@ -32,7 +32,10 @@ import {
   Clock,
   AlertTriangle,
   Download,
+  Coffee,
+  Award,
 } from "lucide-react";
+import { certificatesApi } from "@/lib/api";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import jsPDF from "jspdf";
@@ -44,6 +47,8 @@ export default function ReportDetailPage() {
   const [report, setReport] = useState<Report | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
+  const [certificateLoading, setCertificateLoading] = useState(false);
+  const [hasCertificate, setHasCertificate] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -54,6 +59,14 @@ export default function ReportDetailPage() {
         ]);
         setReport(reportRes.data);
         setQuestions(questionsRes.data);
+
+        // Check if certificate exists
+        try {
+          const certRes = await certificatesApi.getByReport(reportRes.data.id);
+          setHasCertificate(certRes.data.has_pdf);
+        } catch {
+          setHasCertificate(false);
+        }
       } catch (error) {
         console.error("Error fetching report:", error);
       } finally {
@@ -65,6 +78,47 @@ export default function ReportDetailPage() {
       fetchData();
     }
   }, [testId]);
+
+  const handleGenerateCertificate = async () => {
+    if (!report) return;
+    setCertificateLoading(true);
+    try {
+      await certificatesApi.generate(report.id);
+      setHasCertificate(true);
+    } catch (error) {
+      console.error("Error generating certificate:", error);
+      alert("Failed to generate certificate");
+    } finally {
+      setCertificateLoading(false);
+    }
+  };
+
+  const handleDownloadCertificate = async () => {
+    if (!report) return;
+    setCertificateLoading(true);
+    try {
+      const response = await certificatesApi.download(report.id);
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `KOS_Certificate_${report.candidate_name?.replace(/\s+/g, "_")}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error downloading certificate:", error);
+      alert("Failed to download certificate");
+    } finally {
+      setCertificateLoading(false);
+    }
+  };
+
+  const formatBreakTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs}s`;
+  };
 
   if (loading) {
     return (
@@ -446,10 +500,41 @@ export default function ReportDetailPage() {
             <p className="text-muted-foreground">{report.candidate_email}</p>
           </div>
         </div>
-        <Button onClick={generatePDF} className="gap-2">
-          <Download className="w-4 h-4" />
-          Download PDF
-        </Button>
+        <div className="flex gap-2">
+          {hasCertificate ? (
+            <Button
+              variant="outline"
+              onClick={handleDownloadCertificate}
+              disabled={certificateLoading}
+              className="gap-2"
+            >
+              {certificateLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Award className="w-4 h-4" />
+              )}
+              Download Certificate
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={handleGenerateCertificate}
+              disabled={certificateLoading}
+              className="gap-2"
+            >
+              {certificateLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Award className="w-4 h-4" />
+              )}
+              Generate Certificate
+            </Button>
+          )}
+          <Button onClick={generatePDF} className="gap-2">
+            <Download className="w-4 h-4" />
+            Download Report
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -607,6 +692,59 @@ export default function ReportDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Break Usage Card */}
+          {(report.total_break_time_seconds != null && report.total_break_time_seconds > 0) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Coffee className="w-5 h-5 text-amber-500" />
+                  Break Usage
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm">Breaks Taken</span>
+                  </div>
+                  <Badge variant="secondary">
+                    {report.break_count || 0}
+                  </Badge>
+                </div>
+
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-2">
+                    <Coffee className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm">Time Used</span>
+                  </div>
+                  <span className="text-sm font-medium">
+                    {formatBreakTime(report.used_break_time_seconds || 0)} / {formatBreakTime(report.total_break_time_seconds || 0)}
+                  </span>
+                </div>
+
+                {report.break_history && report.break_history.length > 0 && (
+                  <div className="pt-2 border-t">
+                    <p className="text-xs text-muted-foreground mb-2">Break History:</p>
+                    <div className="space-y-2">
+                      {report.break_history.map((entry, i) => (
+                        <div key={i} className="text-xs text-muted-foreground p-2 rounded bg-muted/30">
+                          <div className="flex justify-between">
+                            <span>Break {i + 1}</span>
+                            <span className="font-medium">{formatBreakTime(entry.duration_seconds)}</span>
+                          </div>
+                          <div className="text-[10px] mt-1">
+                            {new Date(entry.start).toLocaleString()}
+                            {entry.end && ` - ${new Date(entry.end).toLocaleTimeString()}`}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 

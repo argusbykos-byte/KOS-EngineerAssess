@@ -7,7 +7,7 @@ from datetime import datetime
 from app.database import get_db
 from app.models import Report, Test, Question, Answer, Candidate
 from app.models.test import TestStatus
-from app.schemas.report import ReportResponse, ReportWithCandidate
+from app.schemas.report import ReportResponse, ReportWithCandidate, BreakHistoryEntry
 from app.services.ai_service import ai_service
 
 router = APIRouter()
@@ -32,6 +32,15 @@ async def list_reports(
 
     response = []
     for report in reports:
+        # Build break history entries
+        break_history = []
+        for entry in (report.test.break_history or []):
+            break_history.append(BreakHistoryEntry(
+                start=entry.get("start", ""),
+                end=entry.get("end"),
+                duration_seconds=entry.get("duration_seconds", 0)
+            ))
+
         response.append(ReportWithCandidate(
             id=report.id,
             test_id=report.test_id,
@@ -54,7 +63,11 @@ async def list_reports(
             difficulty=report.test.candidate.difficulty,
             tab_switch_count=report.test.tab_switch_count,
             tab_switch_timestamps=report.test.tab_switch_timestamps,
-            paste_attempt_count=report.test.paste_attempt_count
+            paste_attempt_count=report.test.paste_attempt_count,
+            total_break_time_seconds=report.test.total_break_time_seconds,
+            used_break_time_seconds=report.test.used_break_time_seconds,
+            break_count=report.test.break_count,
+            break_history=break_history
         ))
 
     return response
@@ -167,6 +180,15 @@ async def get_report(report_id: int, db: AsyncSession = Depends(get_db)):
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
 
+    # Build break history entries
+    break_history = []
+    for entry in (report.test.break_history or []):
+        break_history.append(BreakHistoryEntry(
+            start=entry.get("start", ""),
+            end=entry.get("end"),
+            duration_seconds=entry.get("duration_seconds", 0)
+        ))
+
     return ReportWithCandidate(
         id=report.id,
         test_id=report.test_id,
@@ -189,7 +211,11 @@ async def get_report(report_id: int, db: AsyncSession = Depends(get_db)):
         difficulty=report.test.candidate.difficulty,
         tab_switch_count=report.test.tab_switch_count,
         tab_switch_timestamps=report.test.tab_switch_timestamps,
-        paste_attempt_count=report.test.paste_attempt_count
+        paste_attempt_count=report.test.paste_attempt_count,
+        total_break_time_seconds=report.test.total_break_time_seconds,
+        used_break_time_seconds=report.test.used_break_time_seconds,
+        break_count=report.test.break_count,
+        break_history=break_history
     )
 
 
@@ -304,6 +330,15 @@ async def get_report_by_test(test_id: int, db: AsyncSession = Depends(get_db)):
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
 
+    # Build break history entries
+    break_history = []
+    for entry in (report.test.break_history or []):
+        break_history.append(BreakHistoryEntry(
+            start=entry.get("start", ""),
+            end=entry.get("end"),
+            duration_seconds=entry.get("duration_seconds", 0)
+        ))
+
     return ReportWithCandidate(
         id=report.id,
         test_id=report.test_id,
@@ -326,5 +361,9 @@ async def get_report_by_test(test_id: int, db: AsyncSession = Depends(get_db)):
         difficulty=report.test.candidate.difficulty,
         tab_switch_count=report.test.tab_switch_count,
         tab_switch_timestamps=report.test.tab_switch_timestamps,
-        paste_attempt_count=report.test.paste_attempt_count
+        paste_attempt_count=report.test.paste_attempt_count,
+        total_break_time_seconds=report.test.total_break_time_seconds,
+        used_break_time_seconds=report.test.used_break_time_seconds,
+        break_count=report.test.break_count,
+        break_history=break_history
     )

@@ -30,6 +30,12 @@ class ReportResponse(BaseModel):
         from_attributes = True
 
 
+class BreakHistoryEntry(BaseModel):
+    start: str
+    end: Optional[str] = None
+    duration_seconds: int
+
+
 class ReportWithCandidate(ReportResponse):
     candidate_name: str
     candidate_email: str
@@ -41,3 +47,9 @@ class ReportWithCandidate(ReportResponse):
     tab_switch_count: Optional[int] = None
     tab_switch_timestamps: Optional[List[str]] = None
     paste_attempt_count: Optional[int] = None
+
+    # Break usage data
+    total_break_time_seconds: Optional[int] = None
+    used_break_time_seconds: Optional[int] = None
+    break_count: Optional[int] = None
+    break_history: Optional[List[BreakHistoryEntry]] = None

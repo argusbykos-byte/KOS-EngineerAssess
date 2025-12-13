@@ -30,3 +30,4 @@ class Report(Base):
 
     # Relationships
     test = relationship("Test", back_populates="report")
+    certificate = relationship("Certificate", back_populates="report", uselist=False, cascade="all, delete-orphan")

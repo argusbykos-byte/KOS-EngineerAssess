@@ -54,7 +54,9 @@ import {
   Send,
   MessageSquare,
   Wrench,
+  Coffee,
 } from "lucide-react";
+import { BreakOverlay } from "@/components/test/BreakOverlay";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -254,6 +256,14 @@ export default function TestPage() {
   // Mutex to prevent multiple simultaneous complete calls
   const isCompletingRef = useRef(false);
 
+  // Break state
+  const [isOnBreak, setIsOnBreak] = useState(false);
+  const [breakStartTime, setBreakStartTime] = useState<Date | null>(null);
+  const [remainingBreakTime, setRemainingBreakTime] = useState(0);
+  const [maxSingleBreak, setMaxSingleBreak] = useState(1200); // 20 min default
+  const [isStartingBreak, setIsStartingBreak] = useState(false);
+  const [isEndingBreak, setIsEndingBreak] = useState(false);
+
   // Improvement feedback state (shown on completion)
   const [feedbackText, setFeedbackText] = useState("");
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
@@ -268,6 +278,11 @@ export default function TestPage() {
       const response = await testsApi.getByToken(token);
       setTest(response.data);
 
+      // Update break state from response
+      setIsOnBreak(response.data.is_on_break || false);
+      setRemainingBreakTime(response.data.remaining_break_time_seconds || 0);
+      setMaxSingleBreak(response.data.max_single_break_seconds || 1200);
+
       if (response.data.status === "pending") {
         setViewState("welcome");
       } else if (response.data.status === "in_progress") {
@@ -279,6 +294,18 @@ export default function TestPage() {
             setCurrentSection(sections[0]);
             saveTestState(sections[0]);
           }
+        }
+      } else if (response.data.status === "on_break") {
+        setViewState("test");
+        setIsOnBreak(true);
+        // Set break start time to now if not already set (approximate)
+        if (!breakStartTime) {
+          setBreakStartTime(new Date());
+        }
+        const sections = Object.keys(response.data.questions_by_section);
+        if (sections.length > 0 && (!currentSection || !sections.includes(currentSection))) {
+          setCurrentSection(sections[0]);
+          saveTestState(sections[0]);
         }
       } else if (response.data.status === "completed") {
         setViewState("completed");
@@ -294,7 +321,7 @@ export default function TestPage() {
       setError("Test not found or invalid link");
       setViewState("error");
     }
-  }, [token, currentSection, saveTestState, clearTestState]);
+  }, [token, currentSection, saveTestState, clearTestState, breakStartTime]);
 
   useEffect(() => {
     fetchTest();
@@ -556,6 +583,55 @@ export default function TestPage() {
     } finally {
       setFeedbackSubmitting(false);
     }
+  };
+
+  // Handle starting a break
+  const handleStartBreak = async () => {
+    if (isStartingBreak || remainingBreakTime <= 0) return;
+
+    setIsStartingBreak(true);
+    try {
+      const response = await testsApi.startBreak(token);
+      if (response.data.success) {
+        setIsOnBreak(true);
+        setBreakStartTime(new Date(response.data.break_start_time));
+        setRemainingBreakTime(response.data.remaining_break_time_seconds);
+        setMaxSingleBreak(response.data.max_single_break_seconds);
+      }
+    } catch (err) {
+      console.error("Error starting break:", err);
+      alert("Failed to start break. Please try again.");
+    } finally {
+      setIsStartingBreak(false);
+    }
+  };
+
+  // Handle ending a break
+  const handleEndBreak = async () => {
+    if (isEndingBreak) return;
+
+    setIsEndingBreak(true);
+    try {
+      const response = await testsApi.endBreak(token);
+      if (response.data.success) {
+        setIsOnBreak(false);
+        setBreakStartTime(null);
+        setRemainingBreakTime(response.data.remaining_break_time_seconds);
+        // Refresh test data to get updated timer
+        await fetchTest();
+      }
+    } catch (err) {
+      console.error("Error ending break:", err);
+      alert("Failed to end break. Please try again.");
+    } finally {
+      setIsEndingBreak(false);
+    }
+  };
+
+  // Format break time for display
+  const formatBreakTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    return `${mins}m`;
   };
 
   // Sync all pending answers to backend
@@ -1092,6 +1168,16 @@ export default function TestPage() {
           </DialogContent>
         </Dialog>
 
+        {/* Break Overlay */}
+        <BreakOverlay
+          isVisible={isOnBreak}
+          breakStartTime={breakStartTime}
+          maxSingleBreakSeconds={maxSingleBreak}
+          remainingBreakTimeSeconds={remainingBreakTime}
+          onResumeTest={handleEndBreak}
+          isResuming={isEndingBreak}
+        />
+
         {/* Header */}
         <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
           <div className="container flex items-center justify-between h-16">
@@ -1164,11 +1250,29 @@ export default function TestPage() {
                 </span>
               </div>
 
-              {test.time_remaining_seconds !== null && (
+              {test.time_remaining_seconds !== null && !isOnBreak && (
                 <Timer
                   initialSeconds={test.time_remaining_seconds}
                   onExpire={handleTimeExpired}
                 />
+              )}
+
+              {/* Take Break Button */}
+              {remainingBreakTime > 0 && !isOnBreak && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleStartBreak}
+                  disabled={isStartingBreak}
+                  className="text-amber-600 border-amber-500/50 hover:bg-amber-500/10"
+                >
+                  {isStartingBreak ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Coffee className="w-4 h-4 mr-2" />
+                  )}
+                  Break ({formatBreakTime(remainingBreakTime)})
+                </Button>
               )}
 
               {/* Batch Submit Button */}
