@@ -53,11 +53,11 @@ export default function CandidatesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Candidates</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Candidates</h1>
+          <p className="text-muted-foreground mt-2 text-base">
             Manage all candidates and their assessments
           </p>
         </div>
@@ -70,7 +70,7 @@ export default function CandidatesPage() {
           placeholder="Search candidates..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="pl-9 max-w-sm"
+          className="pl-10 max-w-md h-11 text-base"
         />
       </div>
 

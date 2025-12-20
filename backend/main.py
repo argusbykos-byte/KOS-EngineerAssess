@@ -23,7 +23,8 @@ app = FastAPI(
     title=settings.APP_NAME,
     description="AI-powered engineering candidate assessment platform",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    redirect_slashes=True  # Prevent 307 redirects that cause CORS issues
 )
 
 # Configure CORS
@@ -31,7 +32,11 @@ import os
 frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
 cors_origins = [
     "http://localhost:3000",
+    "http://localhost:3001",
     "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "http://10.40.0.7:3000",
+    "http://10.40.0.7:3001",
     frontend_url,
 ]
 app.add_middleware(

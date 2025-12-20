@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 
-export default function HomePage() {
+export default function TestEndedPage() {
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8">
       <div className="text-center space-y-6 max-w-md">
@@ -10,29 +10,22 @@ export default function HomePage() {
           <Image
             src="/kos-quest-logo.png"
             alt="Quest"
-            width={80}
-            height={80}
+            width={64}
+            height={64}
             className="rounded-xl shadow-lg"
-          />
-          <Image
-            src="/kos-logo.png"
-            alt="KOS"
-            width={120}
-            height={48}
-            className="object-contain"
           />
         </div>
 
-        <h1 className="text-3xl font-bold text-foreground">
-          KOS Engineering Assessment
+        <h1 className="text-2xl font-bold text-foreground">
+          Assessment Session Ended
         </h1>
 
         <p className="text-muted-foreground">
-          If you have received a test link, please use it to access your assessment.
+          Your assessment session has ended. You may close this browser window.
         </p>
 
         <p className="text-sm text-muted-foreground/70">
-          For administrator access, please contact your system administrator.
+          If you have questions, please contact the assessment administrator.
         </p>
       </div>
     </div>

@@ -34,12 +34,43 @@ import {
   Download,
   Coffee,
   Award,
+  Briefcase,
+  Target,
 } from "lucide-react";
+import {
+  SkillRadarChart,
+  generateSkillDataFromReport,
+} from "@/components/charts/SkillRadarChart";
 import { certificatesApi } from "@/lib/api";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+
+interface RoleFit {
+  role_id: string;
+  role_title: string;
+  fit_score: number;
+  explanation: string;
+  skill_dimensions?: string[];
+  is_current_role?: boolean;
+}
+
+interface RoleFitData {
+  role_fits: RoleFit[];
+  top_recommendation: {
+    role_id: string;
+    role_title: string;
+    fit_score: number;
+    explanation: string;
+  } | null;
+  ai_recommendation: {
+    primary_recommendation: string;
+    recommendation_summary: string;
+    development_areas: string[];
+    career_path_suggestions: string[];
+  } | null;
+}
 
 export default function ReportDetailPage() {
   const params = useParams();
@@ -49,6 +80,8 @@ export default function ReportDetailPage() {
   const [loading, setLoading] = useState(true);
   const [certificateLoading, setCertificateLoading] = useState(false);
   const [hasCertificate, setHasCertificate] = useState(false);
+  const [roleFitData, setRoleFitData] = useState<RoleFitData | null>(null);
+  const [roleFitLoading, setRoleFitLoading] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -66,6 +99,17 @@ export default function ReportDetailPage() {
           setHasCertificate(certRes.data.has_pdf);
         } catch {
           setHasCertificate(false);
+        }
+
+        // Fetch role fit recommendations
+        setRoleFitLoading(true);
+        try {
+          const roleFitRes = await reportsApi.getRoleFit(reportRes.data.id);
+          setRoleFitData(roleFitRes.data);
+        } catch {
+          console.log("Role fit recommendations not available");
+        } finally {
+          setRoleFitLoading(false);
         }
       } catch (error) {
         console.error("Error fetching report:", error);
@@ -746,6 +790,107 @@ export default function ReportDetailPage() {
             </Card>
           )}
         </div>
+      </div>
+
+      {/* Skill Radar Chart and Role Fit Section */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Skill Radar Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-primary" />
+              Skills Profile
+            </CardTitle>
+            <CardDescription>
+              Visual representation of skill levels across categories
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SkillRadarChart
+              data={generateSkillDataFromReport(report)}
+              candidateName={report.candidate_name || "Candidate"}
+              height={350}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Role Fit Recommendations */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Briefcase className="w-5 h-5 text-primary" />
+              Role Fit Analysis
+            </CardTitle>
+            <CardDescription>
+              AI-powered role recommendations based on assessment results
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {roleFitLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            ) : roleFitData ? (
+              <div className="space-y-4">
+                {roleFitData.top_recommendation && (
+                  <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                    <p className="text-xs text-muted-foreground mb-1">Top Recommendation</p>
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium">{roleFitData.top_recommendation.role_title}</p>
+                      <Badge className="bg-primary/20 text-primary">
+                        {roleFitData.top_recommendation.fit_score.toFixed(0)}% Fit
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      {roleFitData.top_recommendation.explanation}
+                    </p>
+                  </div>
+                )}
+
+                {roleFitData.ai_recommendation?.recommendation_summary && (
+                  <div className="p-3 rounded-lg bg-muted/50">
+                    <p className="text-sm">{roleFitData.ai_recommendation.recommendation_summary}</p>
+                  </div>
+                )}
+
+                {roleFitData.role_fits.slice(1, 4).length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium mb-2">Other Role Matches</p>
+                    <div className="space-y-2">
+                      {roleFitData.role_fits.slice(1, 4).map((role) => (
+                        <div
+                          key={role.role_id}
+                          className="flex items-center justify-between p-2 rounded bg-muted/30"
+                        >
+                          <span className="text-sm">{role.role_title}</span>
+                          <span className="text-sm font-medium">{role.fit_score.toFixed(0)}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {roleFitData.ai_recommendation?.development_areas && roleFitData.ai_recommendation.development_areas.length > 0 && (
+                  <div className="pt-3 border-t">
+                    <p className="text-sm font-medium mb-2">Development Areas</p>
+                    <ul className="space-y-1">
+                      {roleFitData.ai_recommendation.development_areas.map((area, i) => (
+                        <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                          <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 mt-1.5 shrink-0" />
+                          {area}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Role fit analysis not available
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Card>

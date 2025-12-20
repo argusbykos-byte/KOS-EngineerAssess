@@ -60,6 +60,11 @@ import { BreakOverlay } from "@/components/test/BreakOverlay";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useAntiCheat } from "@/hooks/useAntiCheat";
+import {
+  AntiCheatWarningModal,
+  DisqualificationModal,
+} from "@/components/test/AntiCheatWarningModal";
 
 type ViewState = "loading" | "welcome" | "test" | "completed" | "expired" | "error";
 
@@ -248,21 +253,40 @@ export default function TestPage() {
     }
   }, [token]);
 
-  // Anti-cheat state
-  const [tabSwitchCount, setTabSwitchCount] = useState(0);
+  // Anti-cheat state (legacy - kept for backward compatibility)
   const [showTabWarning, setShowTabWarning] = useState(false);
   const isTestActive = useRef(false);
 
   // Mutex to prevent multiple simultaneous complete calls
   const isCompletingRef = useRef(false);
 
-  // Break state
+  // Break state - must be before antiCheat hook since it's used there
   const [isOnBreak, setIsOnBreak] = useState(false);
   const [breakStartTime, setBreakStartTime] = useState<Date | null>(null);
   const [remainingBreakTime, setRemainingBreakTime] = useState(0);
   const [maxSingleBreak, setMaxSingleBreak] = useState(1200); // 20 min default
   const [isStartingBreak, setIsStartingBreak] = useState(false);
   const [isEndingBreak, setIsEndingBreak] = useState(false);
+
+  // Enhanced anti-cheat modal state
+  const [showAntiCheatWarning, setShowAntiCheatWarning] = useState(false);
+  const [warningData, setWarningData] = useState({ warningCount: 0, violationScore: 0 });
+  const [showDisqualification, setShowDisqualification] = useState(false);
+  const [disqualificationReason, setDisqualificationReason] = useState("");
+
+  // Enhanced anti-cheat hook
+  const antiCheat = useAntiCheat({
+    token,
+    isActive: viewState === "test" && !isOnBreak,
+    onWarning: (warningCount, violationScore) => {
+      setWarningData({ warningCount, violationScore });
+      setShowAntiCheatWarning(true);
+    },
+    onDisqualification: (reason) => {
+      setDisqualificationReason(reason);
+      setShowDisqualification(true);
+    },
+  });
 
   // Improvement feedback state (shown on completion)
   const [feedbackText, setFeedbackText] = useState("");
@@ -277,6 +301,16 @@ export default function TestPage() {
     try {
       const response = await testsApi.getByToken(token);
       setTest(response.data);
+
+      // Check for disqualification FIRST - block everything if disqualified
+      if (response.data.is_disqualified) {
+        setDisqualificationReason(
+          response.data.disqualification_reason || "Your assessment was terminated due to integrity violations."
+        );
+        setShowDisqualification(true);
+        setViewState("test"); // Keep in test view but modal will block everything
+        return; // Don't process further
+      }
 
       // Update break state from response
       setIsOnBreak(response.data.is_on_break || false);
@@ -341,50 +375,21 @@ export default function TestPage() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [viewState]);
 
-  // Tab/window switch detection
+  // Tab/window switch detection (legacy - show warning on focus return)
+  // The actual tracking is done by useAntiCheat hook
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden && isTestActive.current) {
-        const timestamp = new Date().toISOString();
-        setTabSwitchCount((prev) => prev + 1);
-
-        testsApi.logAntiCheatEvent(token, {
-          event_type: "tab_switch",
-          timestamp,
-        }).catch(console.error);
-      } else if (!document.hidden && isTestActive.current) {
-        setShowTabWarning(true);
-      }
-    };
-
-    const handleWindowBlur = () => {
-      if (isTestActive.current) {
-        const timestamp = new Date().toISOString();
-        setTabSwitchCount((prev) => prev + 1);
-
-        testsApi.logAntiCheatEvent(token, {
-          event_type: "tab_switch",
-          timestamp,
-        }).catch(console.error);
-      }
-    };
-
     const handleWindowFocus = () => {
-      if (isTestActive.current) {
+      if (isTestActive.current && antiCheat.tabSwitchCount > 0) {
         setShowTabWarning(true);
       }
     };
 
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("blur", handleWindowBlur);
     window.addEventListener("focus", handleWindowFocus);
 
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("blur", handleWindowBlur);
       window.removeEventListener("focus", handleWindowFocus);
     };
-  }, [token]);
+  }, [antiCheat.tabSwitchCount]);
 
   useEffect(() => {
     isTestActive.current = viewState === "test";
@@ -1064,16 +1069,24 @@ export default function TestPage() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-yellow-500">
                 <Eye className="w-5 h-5" />
-                Tab Switch Detected
+                Activity Detected
               </DialogTitle>
               <DialogDescription className="pt-2">
                 <p className="mb-2">
                   You left the test window. This activity has been logged and
                   will be visible to the reviewer.
                 </p>
-                <p className="text-yellow-500 font-medium">
-                  Total tab switches: {tabSwitchCount}
-                </p>
+                <div className="space-y-1 text-sm">
+                  <p className="text-yellow-500 font-medium">
+                    Tab switches: {antiCheat.tabSwitchCount}
+                  </p>
+                  {antiCheat.copyAttemptCount > 0 && (
+                    <p className="text-yellow-500">Copy attempts: {antiCheat.copyAttemptCount}</p>
+                  )}
+                  {antiCheat.pasteAttemptCount > 0 && (
+                    <p className="text-yellow-500">Paste events: {antiCheat.pasteAttemptCount}</p>
+                  )}
+                </div>
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -1083,6 +1096,20 @@ export default function TestPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Enhanced Anti-Cheat Warning Modal */}
+        <AntiCheatWarningModal
+          isOpen={showAntiCheatWarning}
+          onClose={() => setShowAntiCheatWarning(false)}
+          warningCount={warningData.warningCount}
+          violationScore={warningData.violationScore}
+        />
+
+        {/* Disqualification Modal */}
+        <DisqualificationModal
+          isOpen={showDisqualification}
+          reason={disqualificationReason}
+        />
 
         {/* Complete Test Confirmation Dialog */}
         <Dialog open={showCompleteConfirm} onOpenChange={setShowCompleteConfirm}>
@@ -1236,10 +1263,10 @@ export default function TestPage() {
                 )}
               </div>
 
-              {tabSwitchCount > 0 && (
+              {antiCheat.tabSwitchCount > 0 && (
                 <Badge variant="destructive" className="text-xs">
                   <Eye className="w-3 h-3 mr-1" />
-                  {tabSwitchCount} tab switches
+                  {antiCheat.tabSwitchCount} violations
                 </Badge>
               )}
 

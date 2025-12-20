@@ -55,6 +55,9 @@ export interface TestWithQuestions extends Test {
   remaining_break_time_seconds: number;
   max_single_break_seconds: number;
   break_history: BreakHistoryEntry[];
+  // Disqualification info
+  is_disqualified?: boolean;
+  disqualification_reason?: string | null;
 }
 
 export interface Question {
@@ -117,6 +120,12 @@ export interface Report {
   tab_switch_count?: number | null;
   tab_switch_timestamps?: string[] | null;
   paste_attempt_count?: number | null;
+  copy_attempt_count?: number | null;
+  right_click_count?: number | null;
+  dev_tools_open_count?: number | null;
+  focus_loss_count?: number | null;
+  is_disqualified?: boolean | null;
+  disqualification_reason?: string | null;
   // Break usage data
   total_break_time_seconds?: number | null;
   used_break_time_seconds?: number | null;

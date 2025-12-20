@@ -54,6 +54,13 @@ async def save_draft(
     if test.status != TestStatus.IN_PROGRESS.value:
         raise HTTPException(status_code=400, detail="Test is not in progress")
 
+    # Check if test is disqualified
+    if test.is_disqualified:
+        raise HTTPException(
+            status_code=403,
+            detail="Test has been disqualified. No further submissions are allowed."
+        )
+
     # Get or create answer
     answer_result = await db.execute(
         select(Answer).where(Answer.question_id == question.id)
@@ -124,6 +131,13 @@ async def submit_answer(
     test = question.test
     if test.status != TestStatus.IN_PROGRESS.value:
         raise HTTPException(status_code=400, detail="Test is not in progress")
+
+    # Check if test is disqualified
+    if test.is_disqualified:
+        raise HTTPException(
+            status_code=403,
+            detail="Test has been disqualified. No further submissions are allowed."
+        )
 
     # Get or create answer
     answer_result = await db.execute(
@@ -242,6 +256,16 @@ async def batch_save_drafts(
                 failed += 1
                 continue
 
+            # Check if test is disqualified
+            if test.is_disqualified:
+                results.append(BatchDraftResultItem(
+                    question_id=draft.question_id,
+                    success=False,
+                    error="Test has been disqualified"
+                ))
+                failed += 1
+                continue
+
             # Get or create answer
             answer_result = await db.execute(
                 select(Answer).where(Answer.question_id == question.id)
@@ -341,6 +365,16 @@ async def batch_submit_answers(
                     question_id=answer_data.question_id,
                     success=False,
                     error="Test is not in progress"
+                ))
+                failed += 1
+                continue
+
+            # Check if test is disqualified
+            if test.is_disqualified:
+                results.append(BatchAnswerResultItem(
+                    question_id=answer_data.question_id,
+                    success=False,
+                    error="Test has been disqualified"
                 ))
                 failed += 1
                 continue
@@ -476,6 +510,13 @@ async def get_live_feedback(
     test = question.test
     if test.status != TestStatus.IN_PROGRESS.value:
         raise HTTPException(status_code=400, detail="Test is not in progress")
+
+    # Check if test is disqualified
+    if test.is_disqualified:
+        raise HTTPException(
+            status_code=403,
+            detail="Test has been disqualified. No further submissions are allowed."
+        )
 
     # Call AI service for lightweight feedback
     feedback = await ai_service.generate_live_feedback(

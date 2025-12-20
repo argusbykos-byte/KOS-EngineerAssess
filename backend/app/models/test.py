@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, JSON, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum, JSON, Boolean, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
@@ -40,6 +40,17 @@ class Test(Base):
     tab_switch_count = Column(Integer, default=0)
     tab_switch_timestamps = Column(JSON, default=list)  # List of ISO timestamps
     paste_attempt_count = Column(Integer, default=0)
+
+    # Enhanced anti-cheat tracking
+    copy_attempt_count = Column(Integer, default=0)
+    right_click_count = Column(Integer, default=0)
+    dev_tools_open_count = Column(Integer, default=0)
+    focus_loss_count = Column(Integer, default=0)
+    violation_events = Column(JSON, default=list)  # List of {type, timestamp, details}
+    warning_count = Column(Integer, default=0)
+    is_disqualified = Column(Boolean, default=False)
+    disqualified_at = Column(DateTime, nullable=True)
+    disqualification_reason = Column(String(500), nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

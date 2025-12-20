@@ -72,15 +72,15 @@ function formatDate(dateString: string | null | undefined): string {
 // Test status badge component
 function TestStatusBadge({ status }: { status: string }) {
   const statusConfig: Record<string, { label: string; className: string }> = {
-    pending: { label: "Pending", className: "bg-gray-500/20 text-gray-400" },
-    in_progress: { label: "In Progress", className: "bg-yellow-500/20 text-yellow-500" },
-    completed: { label: "Completed", className: "bg-green-500/20 text-green-500" },
-    expired: { label: "Expired", className: "bg-red-500/20 text-red-500" },
+    pending: { label: "Pending", className: "bg-gray-500/20 text-gray-400 border-gray-500/30" },
+    in_progress: { label: "In Progress", className: "bg-amber-500/20 text-amber-400 border-amber-500/30 animate-pulse" },
+    completed: { label: "Completed", className: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" },
+    expired: { label: "Expired", className: "bg-red-500/20 text-red-400 border-red-500/30" },
   };
 
   const config = statusConfig[status] || statusConfig.pending;
   return (
-    <Badge variant="outline" className={`text-xs ${config.className}`}>
+    <Badge variant="outline" className={`text-xs font-medium ${config.className}`}>
       {config.label}
     </Badge>
   );
@@ -382,56 +382,86 @@ export function CandidateTable({
       </Dialog>
 
       <div className="grid gap-4">
-        {candidates.map((candidate) => {
+        {candidates.map((candidate, index) => {
           const tests = candidate.tests || [];
           const latestTest = tests[0]; // Already sorted by created_at desc
           const hasMultipleTests = tests.length > 1;
           const isExpanded = expandedCandidates.has(candidate.id);
 
+          // Difficulty color mapping
+          const difficultyColors: Record<string, string> = {
+            junior: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+            mid: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+            senior: "bg-violet-500/20 text-violet-400 border-violet-500/30",
+          };
+
           return (
-            <Card key={candidate.id}>
-              <CardHeader className="pb-2">
+            <Card
+              key={candidate.id}
+              className="group relative overflow-hidden animate-fade-in hover:border-primary/30 transition-all duration-300"
+              style={{ animationDelay: `${index * 50}ms` }}
+            >
+              {/* Hover glow effect */}
+              <div className="absolute -inset-px bg-gradient-to-r from-primary/10 via-transparent to-cyan-500/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+              <CardHeader className="relative pb-3">
                 <div className="flex items-start justify-between">
                   <div>
-                    <CardTitle className="text-lg">{candidate.name}</CardTitle>
-                    <CardDescription className="flex items-center gap-2 mt-1">
-                      <Mail className="w-3 h-3" />
-                      {candidate.email}
+                    <CardTitle className="text-xl font-semibold tracking-tight group-hover:text-primary transition-colors">
+                      {candidate.name}
+                    </CardTitle>
+                    <CardDescription className="flex items-center gap-2 mt-1.5">
+                      <Mail className="w-3.5 h-3.5" />
+                      <span className="font-medium">{candidate.email}</span>
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">
+                    <Badge variant="outline" className={`text-xs font-medium ${difficultyColors[candidate.difficulty] || ""}`}>
                       {getDifficultyLabel(candidate.difficulty)}
                     </Badge>
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="secondary" className="text-xs font-medium bg-secondary/80">
                       <Clock className="w-3 h-3 mr-1" />
                       {candidate.test_duration_hours}h
                     </Badge>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-1 mb-4">
-                  {candidate.categories.map((cat) => (
-                    <Badge key={cat} variant="outline" className="text-xs">
-                      {getCategoryLabel(cat)}
-                    </Badge>
-                  ))}
+              <CardContent className="relative">
+                {/* Category badges */}
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  {candidate.categories.map((cat, i) => {
+                    const categoryColors = [
+                      "bg-blue-500/15 text-blue-400 border-blue-500/30",
+                      "bg-purple-500/15 text-purple-400 border-purple-500/30",
+                      "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
+                      "bg-pink-500/15 text-pink-400 border-pink-500/30",
+                      "bg-orange-500/15 text-orange-400 border-orange-500/30",
+                    ];
+                    return (
+                      <Badge key={cat} variant="outline" className={`text-xs font-medium ${categoryColors[i % categoryColors.length]}`}>
+                        {getCategoryLabel(cat)}
+                      </Badge>
+                    );
+                  })}
                 </div>
 
+                {/* Extracted skills */}
                 {candidate.extracted_skills && candidate.extracted_skills.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-xs text-muted-foreground mb-1">
-                      Extracted Skills:
+                  <div className="mb-4 p-3 rounded-lg bg-gradient-to-r from-primary/5 to-cyan-500/5 border border-primary/10">
+                    <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wider">
+                      Extracted Skills
                     </p>
-                    <div className="flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1.5">
                       {candidate.extracted_skills.slice(0, 8).map((skill) => (
-                        <Badge key={skill} className="text-xs bg-primary/20 text-primary border-primary/50">
+                        <Badge
+                          key={skill}
+                          className="text-xs bg-gradient-to-r from-primary/20 to-primary/10 text-primary border-primary/30 hover:from-primary/30 hover:to-primary/20 transition-colors cursor-default"
+                        >
                           {skill}
                         </Badge>
                       ))}
                       {candidate.extracted_skills.length > 8 && (
-                        <Badge variant="secondary" className="text-xs">
+                        <Badge variant="secondary" className="text-xs bg-secondary/50">
                           +{candidate.extracted_skills.length - 8} more
                         </Badge>
                       )}

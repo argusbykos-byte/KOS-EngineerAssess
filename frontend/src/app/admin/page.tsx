@@ -51,11 +51,11 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground mt-2 text-base">
             Manage candidates and view assessment results
           </p>
         </div>
@@ -65,7 +65,7 @@ export default function AdminDashboard() {
       <StatsCards candidates={candidates} reports={reports} />
 
       <div>
-        <h2 className="text-xl font-semibold mb-4">Recent Candidates</h2>
+        <h2 className="text-xl md:text-2xl font-semibold mb-4 tracking-tight">Recent Candidates</h2>
         <CandidateTable
           candidates={candidates.slice(0, 5)}
           onDelete={handleDelete}

@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Users, FileCheck, Clock, TrendingUp } from "lucide-react";
 import { Candidate, Report } from "@/types";
 
@@ -28,43 +28,83 @@ export function StatsCards({ candidates, reports }: StatsCardsProps) {
       value: totalCandidates,
       icon: Users,
       description: "Registered candidates",
-      color: "text-blue-500",
+      gradient: "from-blue-500 to-cyan-500",
+      bgGradient: "from-blue-500/10 to-cyan-500/10",
+      iconBg: "bg-blue-500/20",
+      iconColor: "text-blue-400",
+      borderColor: "hover:border-blue-500/30",
     },
     {
       title: "Completed Tests",
       value: completedTests,
       icon: FileCheck,
       description: "Assessments finished",
-      color: "text-green-500",
+      gradient: "from-emerald-500 to-green-500",
+      bgGradient: "from-emerald-500/10 to-green-500/10",
+      iconBg: "bg-emerald-500/20",
+      iconColor: "text-emerald-400",
+      borderColor: "hover:border-emerald-500/30",
     },
     {
       title: "Pending Tests",
       value: pendingTests,
       icon: Clock,
       description: "Awaiting completion",
-      color: "text-yellow-500",
+      gradient: "from-amber-500 to-orange-500",
+      bgGradient: "from-amber-500/10 to-orange-500/10",
+      iconBg: "bg-amber-500/20",
+      iconColor: "text-amber-400",
+      borderColor: "hover:border-amber-500/30",
     },
     {
       title: "Avg. Score",
       value: `${avgScore.toFixed(1)}%`,
       icon: TrendingUp,
       description: "Across all tests",
-      color: "text-purple-500",
+      gradient: "from-violet-500 to-purple-500",
+      bgGradient: "from-violet-500/10 to-purple-500/10",
+      iconBg: "bg-violet-500/20",
+      iconColor: "text-violet-400",
+      borderColor: "hover:border-violet-500/30",
     },
   ];
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      {stats.map((stat) => (
-        <Card key={stat.title}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-            <stat.icon className={`h-4 w-4 ${stat.color}`} />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stat.value}</div>
-            <p className="text-xs text-muted-foreground">{stat.description}</p>
-          </CardContent>
+      {stats.map((stat, index) => (
+        <Card
+          key={stat.title}
+          className={`group relative overflow-hidden border-border/50 ${stat.borderColor} transition-all duration-500 hover:-translate-y-1 hover:shadow-xl animate-fade-in`}
+          style={{ animationDelay: `${index * 100}ms` }}
+        >
+          {/* Background gradient */}
+          <div className={`absolute inset-0 bg-gradient-to-br ${stat.bgGradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
+
+          {/* Top accent line */}
+          <div className={`absolute top-0 left-0 right-0 h-px bg-gradient-to-r ${stat.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
+
+          {/* Glow effect on hover */}
+          <div className={`absolute -inset-px bg-gradient-to-r ${stat.gradient} rounded-xl opacity-0 group-hover:opacity-20 blur-xl transition-opacity duration-500`} />
+
+          <div className="relative p-6">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm font-medium text-muted-foreground group-hover:text-foreground/80 transition-colors">
+                {stat.title}
+              </p>
+              <div className={`p-2.5 rounded-xl ${stat.iconBg} group-hover:scale-110 transition-transform duration-300`}>
+                <stat.icon className={`h-5 w-5 ${stat.iconColor}`} />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <p className={`text-4xl font-bold tracking-tight bg-gradient-to-r ${stat.gradient} bg-clip-text text-transparent`}>
+                {stat.value}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {stat.description}
+              </p>
+            </div>
+          </div>
         </Card>
       ))}
     </div>

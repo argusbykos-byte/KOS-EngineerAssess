@@ -1911,6 +1911,148 @@ Please review the original feedback and take appropriate action."""
                 "changes_made": None
             }
 
+    async def generate_role_fit_recommendation(
+        self,
+        candidate_name: str,
+        section_scores: Dict[str, float],
+        strengths: List[str],
+        weaknesses: List[str],
+        skills: List[str] = None,
+        current_role_id: str = None
+    ) -> Dict[str, Any]:
+        """
+        Generate role fit recommendations based on assessment results.
+
+        Returns recommended roles with fit scores and explanations.
+        """
+        from app.config.roles import ENGINEERING_ROLES, get_role_skill_dimensions
+
+        # Calculate fit scores for each role
+        role_fits = []
+
+        for role_id, role_config in ENGINEERING_ROLES.items():
+            fit_score = 0
+            explanations = []
+
+            # Map section scores to role categories
+            category_mapping = {
+                "brain_teaser": "brain_teaser",
+                "coding": "coding",
+                "code_review": "code_review",
+                "system_design": "system_design",
+                "signal_processing": "signal_processing",
+            }
+
+            total_weight = 0
+            weighted_score = 0
+
+            for category, config in role_config.get("categories", {}).items():
+                weight = config.get("weight", 0.1)
+                total_weight += weight
+
+                # Find matching section score
+                score = section_scores.get(category, 0)
+                if score:
+                    weighted_score += score * weight
+
+            if total_weight > 0:
+                fit_score = weighted_score / total_weight
+
+            # Boost score if candidate has relevant skills
+            if skills:
+                focus_areas = role_config.get("focus_areas", [])
+                skill_matches = 0
+                for skill in skills:
+                    for focus in focus_areas:
+                        if skill.lower() in focus.lower() or focus.lower() in skill.lower():
+                            skill_matches += 1
+                            break
+
+                if skill_matches > 0:
+                    skill_boost = min(skill_matches * 2, 10)  # Max 10% boost
+                    fit_score = min(100, fit_score + skill_boost)
+                    explanations.append(f"{skill_matches} matching skills detected")
+
+            # Generate explanation
+            skill_dimensions = role_config.get("skill_dimensions", [])
+            if fit_score >= 80:
+                explanations.append("Strong alignment with role requirements")
+            elif fit_score >= 60:
+                explanations.append("Good potential for this role")
+            elif fit_score >= 40:
+                explanations.append("Some gaps in key areas")
+            else:
+                explanations.append("May need significant development")
+
+            role_fits.append({
+                "role_id": role_id,
+                "role_title": role_config["title"],
+                "fit_score": round(fit_score, 1),
+                "explanation": ". ".join(explanations),
+                "skill_dimensions": skill_dimensions,
+                "is_current_role": role_id == current_role_id,
+            })
+
+        # Sort by fit score descending
+        role_fits.sort(key=lambda x: x["fit_score"], reverse=True)
+
+        # Generate AI-powered recommendations if available
+        top_roles = role_fits[:3]
+        ai_recommendation = None
+
+        try:
+            messages = [
+                {
+                    "role": "system",
+                    "content": """You are an expert career advisor providing role fit recommendations based on assessment results.
+
+Return a JSON object with:
+{
+    "primary_recommendation": "role_id of best fit",
+    "recommendation_summary": "2-3 sentence summary of the recommendation",
+    "development_areas": ["Area 1", "Area 2"],
+    "career_path_suggestions": ["Suggestion 1", "Suggestion 2"]
+}"""
+                },
+                {
+                    "role": "user",
+                    "content": f"""Candidate: {candidate_name}
+
+Assessment Scores:
+{json.dumps(section_scores, indent=2)}
+
+Strengths: {', '.join(strengths[:5]) if strengths else 'Not identified'}
+Areas for Improvement: {', '.join(weaknesses[:5]) if weaknesses else 'Not identified'}
+Skills: {', '.join(skills[:10]) if skills else 'Not specified'}
+
+Top 3 Role Matches:
+{json.dumps([{k: v for k, v in r.items() if k in ['role_id', 'role_title', 'fit_score']} for r in top_roles], indent=2)}
+
+Provide a role fit recommendation."""
+                }
+            ]
+
+            response = await self._call_kimi_with_retry(messages, temperature=0.5)
+
+            if response:
+                try:
+                    ai_recommendation = json.loads(response)
+                except json.JSONDecodeError:
+                    match = re.search(r'\{.*\}', response, re.DOTALL)
+                    if match:
+                        try:
+                            ai_recommendation = json.loads(match.group())
+                        except:
+                            pass
+        except Exception as e:
+            print(f"[AIService] Error generating AI role recommendation: {e}")
+
+        return {
+            "role_fits": role_fits,
+            "top_recommendation": role_fits[0] if role_fits else None,
+            "ai_recommendation": ai_recommendation,
+        }
+
     async def close(self):
         await self.client.aclose()
 

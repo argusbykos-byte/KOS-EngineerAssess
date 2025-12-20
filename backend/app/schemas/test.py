@@ -64,6 +64,10 @@ class TestWithQuestions(TestResponse):
     max_single_break_seconds: int = 1200  # 20 minutes default
     break_history: List[BreakHistoryEntry] = []
 
+    # Disqualification info
+    is_disqualified: bool = False
+    disqualification_reason: Optional[str] = None
+
 
 class BreakStartResponse(BaseModel):
     success: bool

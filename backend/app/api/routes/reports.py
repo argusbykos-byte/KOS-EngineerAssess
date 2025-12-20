@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 from app.database import get_db
 from app.models import Report, Test, Question, Answer, Candidate
@@ -367,3 +367,125 @@ async def get_report_by_test(test_id: int, db: AsyncSession = Depends(get_db)):
         break_count=report.test.break_count,
         break_history=break_history
     )
+
+
+@router.get("/{report_id}/role-fit")
+async def get_role_fit_recommendations(report_id: int, db: AsyncSession = Depends(get_db)):
+    """Get AI-powered role fit recommendations for a report."""
+    query = (
+        select(Report)
+        .options(selectinload(Report.test).selectinload(Test.candidate))
+        .where(Report.id == report_id)
+    )
+    result = await db.execute(query)
+    report = result.scalars().first()
+
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    # Build section scores dict
+    section_scores = {}
+    if report.brain_teaser_score is not None:
+        section_scores["brain_teaser"] = report.brain_teaser_score
+    if report.coding_score is not None:
+        section_scores["coding"] = report.coding_score
+    if report.code_review_score is not None:
+        section_scores["code_review"] = report.code_review_score
+    if report.system_design_score is not None:
+        section_scores["system_design"] = report.system_design_score
+    if report.signal_processing_score is not None:
+        section_scores["signal_processing"] = report.signal_processing_score
+
+    # Get role fit recommendations
+    role_fit = await ai_service.generate_role_fit_recommendation(
+        candidate_name=report.test.candidate.name,
+        section_scores=section_scores,
+        strengths=report.strengths or [],
+        weaknesses=report.weaknesses or [],
+        skills=report.test.candidate.extracted_skills or [],
+    )
+
+    return {
+        "report_id": report_id,
+        "candidate_name": report.test.candidate.name,
+        **role_fit
+    }
+
+
+@router.get("/cheating-logs")
+async def get_cheating_logs(
+    skip: int = 0,
+    limit: int = 100,
+    severity: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all cheating/integrity violation logs across tests."""
+    query = (
+        select(Test)
+        .options(selectinload(Test.candidate))
+        .where(
+            (Test.tab_switch_count > 0) |
+            (Test.paste_attempt_count > 0) |
+            (Test.copy_attempt_count > 0) |
+            (Test.right_click_count > 0) |
+            (Test.dev_tools_open_count > 0) |
+            (Test.is_disqualified == True)
+        )
+        .offset(skip)
+        .limit(limit)
+        .order_by(Test.updated_at.desc())
+    )
+    result = await db.execute(query)
+    tests = result.scalars().all()
+
+    logs = []
+    for test in tests:
+        # Calculate total violations
+        total_violations = (
+            (test.tab_switch_count or 0) +
+            (test.paste_attempt_count or 0) +
+            (test.copy_attempt_count or 0) +
+            (test.right_click_count or 0) +
+            (test.dev_tools_open_count or 0)
+        )
+
+        # Determine severity
+        if test.is_disqualified:
+            test_severity = "critical"
+        elif total_violations >= 5:
+            test_severity = "high"
+        elif total_violations >= 3:
+            test_severity = "medium"
+        else:
+            test_severity = "low"
+
+        # Filter by severity if specified
+        if severity and test_severity != severity:
+            continue
+
+        logs.append({
+            "test_id": test.id,
+            "candidate_name": test.candidate.name,
+            "candidate_email": test.candidate.email,
+            "test_status": test.status,
+            "tab_switch_count": test.tab_switch_count or 0,
+            "paste_attempt_count": test.paste_attempt_count or 0,
+            "copy_attempt_count": test.copy_attempt_count or 0,
+            "right_click_count": test.right_click_count or 0,
+            "dev_tools_open_count": test.dev_tools_open_count or 0,
+            "focus_loss_count": test.focus_loss_count or 0,
+            "total_violations": total_violations,
+            "warning_count": test.warning_count or 0,
+            "is_disqualified": test.is_disqualified or False,
+            "disqualification_reason": test.disqualification_reason,
+            "disqualified_at": test.disqualified_at.isoformat() if test.disqualified_at else None,
+            "violation_events": test.violation_events or [],
+            "severity": test_severity,
+            "created_at": test.created_at.isoformat(),
+            "updated_at": test.updated_at.isoformat(),
+        })
+
+    return {
+        "total": len(logs),
+        "logs": logs
+    }

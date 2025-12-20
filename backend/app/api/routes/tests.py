@@ -328,7 +328,10 @@ async def get_test_by_token(access_token: str, db: AsyncSession = Depends(get_db
         is_on_break=is_on_break,
         remaining_break_time_seconds=remaining_break_time,
         max_single_break_seconds=max_single_break,
-        break_history=break_history
+        break_history=break_history,
+        # Disqualification info
+        is_disqualified=test.is_disqualified or False,
+        disqualification_reason=test.disqualification_reason
     )
 
 
@@ -515,10 +518,35 @@ from typing import Literal, Optional
 
 
 class AntiCheatEvent(BaseModel):
-    event_type: Literal["tab_switch", "paste_attempt", "code_copy", "code_paste"]
+    event_type: Literal[
+        "tab_switch", "paste_attempt", "code_copy", "code_paste",
+        "copy_attempt", "right_click", "dev_tools_open", "focus_loss"
+    ]
     timestamp: str
     chars: Optional[int] = None
     lines: Optional[int] = None
+    details: Optional[str] = None
+
+
+# Anti-cheat configuration - can be made database-backed later
+ANTI_CHEAT_CONFIG = {
+    "warning_threshold": 3,  # Warnings before disqualification
+    "disqualification_threshold": 5,  # Total violations for auto-disqualification
+    "violation_weights": {
+        "tab_switch": 1,
+        "paste_attempt": 2,
+        "copy_attempt": 1,
+        "right_click": 0.5,
+        "dev_tools_open": 3,
+        "focus_loss": 0.5,
+    }
+}
+
+
+@router.get("/anti-cheat/config")
+async def get_anti_cheat_config():
+    """Get anti-cheat configuration."""
+    return ANTI_CHEAT_CONFIG
 
 
 @router.post("/token/{access_token}/anti-cheat")
@@ -527,33 +555,91 @@ async def log_anti_cheat_event(
     event: AntiCheatEvent,
     db: AsyncSession = Depends(get_db)
 ):
-    """Log an anti-cheat event (tab switch, paste attempt, code copy/paste)."""
+    """Log an anti-cheat event (tab switch, paste attempt, code copy/paste, dev tools, etc.)."""
     result = await db.execute(select(Test).where(Test.access_token == access_token))
     test = result.scalar_one_or_none()
 
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
 
-    if test.status != TestStatus.IN_PROGRESS.value:
+    if test.status not in [TestStatus.IN_PROGRESS.value, TestStatus.ON_BREAK.value]:
         raise HTTPException(status_code=400, detail="Test is not in progress")
 
+    # Check if already disqualified
+    if test.is_disqualified:
+        return {
+            "success": False,
+            "is_disqualified": True,
+            "disqualification_reason": test.disqualification_reason
+        }
+
+    # Log violation event
+    violation_events = list(test.violation_events or [])
+    violation_events.append({
+        "type": event.event_type,
+        "timestamp": event.timestamp,
+        "details": event.details or "",
+        "chars": event.chars,
+        "lines": event.lines
+    })
+    test.violation_events = violation_events
+
+    # Update counters based on event type
     if event.event_type == "tab_switch":
         test.tab_switch_count = (test.tab_switch_count or 0) + 1
-        timestamps = test.tab_switch_timestamps or []
+        timestamps = list(test.tab_switch_timestamps or [])
         timestamps.append(event.timestamp)
         test.tab_switch_timestamps = timestamps
     elif event.event_type in ["paste_attempt", "code_paste"]:
-        # Both textarea paste attempts and code editor pastes count as paste attempts
         test.paste_attempt_count = (test.paste_attempt_count or 0) + 1
-    # code_copy events are logged but don't increment any counter
-    # They're tracked for auditing purposes
+    elif event.event_type in ["copy_attempt", "code_copy"]:
+        test.copy_attempt_count = (test.copy_attempt_count or 0) + 1
+    elif event.event_type == "right_click":
+        test.right_click_count = (test.right_click_count or 0) + 1
+    elif event.event_type == "dev_tools_open":
+        test.dev_tools_open_count = (test.dev_tools_open_count or 0) + 1
+    elif event.event_type == "focus_loss":
+        test.focus_loss_count = (test.focus_loss_count or 0) + 1
+
+    # Calculate weighted violation score
+    violation_score = (
+        (test.tab_switch_count or 0) * ANTI_CHEAT_CONFIG["violation_weights"]["tab_switch"] +
+        (test.paste_attempt_count or 0) * ANTI_CHEAT_CONFIG["violation_weights"]["paste_attempt"] +
+        (test.copy_attempt_count or 0) * ANTI_CHEAT_CONFIG["violation_weights"]["copy_attempt"] +
+        (test.right_click_count or 0) * ANTI_CHEAT_CONFIG["violation_weights"]["right_click"] +
+        (test.dev_tools_open_count or 0) * ANTI_CHEAT_CONFIG["violation_weights"]["dev_tools_open"] +
+        (test.focus_loss_count or 0) * ANTI_CHEAT_CONFIG["violation_weights"]["focus_loss"]
+    )
+
+    # Determine if warning or disqualification is needed
+    should_warn = False
+    should_disqualify = False
+    warning_count = test.warning_count or 0
+
+    if violation_score >= ANTI_CHEAT_CONFIG["disqualification_threshold"]:
+        should_disqualify = True
+        test.is_disqualified = True
+        test.disqualified_at = datetime.utcnow()
+        test.disqualification_reason = f"Exceeded violation threshold (score: {violation_score:.1f})"
+    elif violation_score >= ANTI_CHEAT_CONFIG["warning_threshold"] * (warning_count + 1) / ANTI_CHEAT_CONFIG["warning_threshold"]:
+        should_warn = True
+        test.warning_count = warning_count + 1
 
     await db.commit()
 
     return {
         "success": True,
         "tab_switch_count": test.tab_switch_count,
-        "paste_attempt_count": test.paste_attempt_count
+        "paste_attempt_count": test.paste_attempt_count,
+        "copy_attempt_count": test.copy_attempt_count,
+        "right_click_count": test.right_click_count,
+        "dev_tools_open_count": test.dev_tools_open_count,
+        "focus_loss_count": test.focus_loss_count,
+        "violation_score": violation_score,
+        "warning_count": test.warning_count,
+        "should_warn": should_warn,
+        "is_disqualified": test.is_disqualified,
+        "disqualification_reason": test.disqualification_reason if test.is_disqualified else None
     }
 
 
