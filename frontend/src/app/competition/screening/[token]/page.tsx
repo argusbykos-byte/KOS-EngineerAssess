@@ -45,6 +45,7 @@ function ScreeningContent() {
 
   const [screening, setScreening] = useState<ScreeningTest | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState("Loading your test...");
   const [starting, setStarting] = useState(false);
   const [startingMessage, setStartingMessage] = useState("Starting...");
   const [submitting, setSubmitting] = useState(false);
@@ -73,45 +74,84 @@ function ScreeningContent() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const questionStartTime = useRef<number>(Date.now());
 
-  // Fetch screening data
-  const fetchScreening = useCallback(async () => {
+  // Fetch screening data with retry logic
+  const fetchScreening = useCallback(async (isRetry = false) => {
     if (!competitionId) {
       setError("Competition ID is required");
       setLoading(false);
       return;
     }
 
-    try {
-      const res = await competitionsApi.getScreening(competitionId, token);
-      setScreening(res.data);
+    const maxRetries = 3;
+    const retryDelay = 2000;
 
-      if (res.data.questions_by_section) {
-        const allQuestions: QuestionWithTiming[] = [];
-        Object.values(res.data.questions_by_section).forEach((sectionQuestions) => {
-          (sectionQuestions as Question[]).forEach((q) => {
-            allQuestions.push({ ...q, timeSpent: 0 });
+    // Show progress messages for initial load
+    const progressMessages = [
+      "Loading your test...",
+      "Preparing questions... (this may take up to 90 seconds)",
+      "Almost ready...",
+    ];
+    let messageIndex = 0;
+    let messageInterval: NodeJS.Timeout | null = null;
+
+    if (!isRetry) {
+      setLoadingMessage(progressMessages[0]);
+      messageInterval = setInterval(() => {
+        messageIndex = Math.min(messageIndex + 1, progressMessages.length - 1);
+        setLoadingMessage(progressMessages[messageIndex]);
+      }, 20000);
+    }
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const res = await competitionsApi.getScreening(competitionId, token);
+        if (messageInterval) clearInterval(messageInterval);
+        setScreening(res.data);
+
+        if (res.data.questions_by_section) {
+          const allQuestions: QuestionWithTiming[] = [];
+          Object.values(res.data.questions_by_section).forEach((sectionQuestions) => {
+            (sectionQuestions as Question[]).forEach((q) => {
+              allQuestions.push({ ...q, timeSpent: 0 });
+            });
           });
-        });
-        setQuestions(allQuestions);
+          setQuestions(allQuestions);
 
-        // Restore draft answers
-        const drafts: Record<number, string> = {};
-        allQuestions.forEach((q) => {
-          if (q.draft_answer) {
-            drafts[q.id] = q.draft_answer;
+          // Restore draft answers
+          const drafts: Record<number, string> = {};
+          allQuestions.forEach((q) => {
+            if (q.draft_answer) {
+              drafts[q.id] = q.draft_answer;
+            }
+          });
+          setAnswers(drafts);
+        }
+
+        if (res.data.time_remaining_seconds !== null) {
+          setTimeRemaining(res.data.time_remaining_seconds);
+        }
+        setLoading(false);
+        return; // Success
+      } catch (error: unknown) {
+        const err = error as { response?: { data?: { detail?: string } }; code?: string };
+        const isTimeout = err.code === "ECONNABORTED" || err.code === "ERR_NETWORK";
+        const isLastAttempt = attempt === maxRetries;
+
+        if (isLastAttempt) {
+          if (messageInterval) clearInterval(messageInterval);
+          if (isTimeout) {
+            setError("The server is taking too long to respond. Please refresh the page to try again.");
+          } else {
+            setError(err.response?.data?.detail || "Failed to load screening test");
           }
-        });
-        setAnswers(drafts);
-      }
+          setLoading(false);
+          return;
+        }
 
-      if (res.data.time_remaining_seconds !== null) {
-        setTimeRemaining(res.data.time_remaining_seconds);
+        // Retry after delay
+        setLoadingMessage(`Connection issue, retrying... (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
       }
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { detail?: string } } };
-      setError(err.response?.data?.detail || "Failed to load screening test");
-    } finally {
-      setLoading(false);
     }
   }, [competitionId, token]);
 
@@ -444,8 +484,15 @@ function ScreeningContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4 p-4">
+        <Loader2 className="w-12 h-12 animate-spin text-primary" />
+        <p className="text-lg font-medium text-center">{loadingMessage}</p>
+        <p className="text-sm text-muted-foreground text-center max-w-md">
+          If this is your first time, we&apos;re generating personalized questions for you.
+        </p>
+        <div className="w-full max-w-xs">
+          <Progress value={undefined} className="h-2 animate-pulse" />
+        </div>
       </div>
     );
   }
