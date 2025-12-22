@@ -6,20 +6,13 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8">
       <div className="text-center space-y-6 max-w-md">
-        <div className="flex justify-center gap-3 mb-8">
+        <div className="flex justify-center mb-8">
           <Image
             src="/kos-quest-logo.png"
-            alt="Quest"
+            alt="KOS Quest"
             width={80}
             height={80}
             className="rounded-xl shadow-lg"
-          />
-          <Image
-            src="/kos-logo.png"
-            alt="KOS"
-            width={120}
-            height={48}
-            className="object-contain"
           />
         </div>
 

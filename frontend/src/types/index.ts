@@ -240,3 +240,152 @@ export interface TestWithChallenge extends Test {
   challenge_submission: ChallengeSubmission | null;
   time_remaining_seconds: number | null;
 }
+
+// Competition types
+export type CompetitionStatus =
+  | "registration_open"
+  | "screening_active"
+  | "screening_closed"
+  | "live_active"
+  | "completed";
+
+export interface Competition {
+  id: number;
+  name: string;
+  description: string | null;
+  screening_start_date: string | null;
+  screening_deadline: string | null;
+  live_competition_date: string | null;
+  max_participants: number;
+  qualified_count: number;
+  status: CompetitionStatus;
+  test_duration_minutes: number;
+  questions_count: number;
+  passing_percentile: number;
+  created_at: string;
+  updated_at: string;
+  registration_count: number;
+  completed_count: number;
+}
+
+export interface CompetitionDetail extends Competition {
+  registrations: RegistrationSummary[];
+}
+
+export interface RegistrationSummary {
+  id: number;
+  candidate_id: number;
+  candidate_name: string;
+  candidate_email: string;
+  registered_at: string;
+  screening_completed: boolean;
+  screening_score: number | null;
+  is_qualified: boolean;
+  qualification_rank: number | null;
+}
+
+export interface RegistrationWithToken {
+  registration_id: number;
+  registration_token: string;
+  candidate_id: number;
+  candidate_name: string;
+  candidate_email: string;
+  competition_name: string;
+  screening_start_date: string | null;
+  screening_deadline: string | null;
+}
+
+export interface ScreeningTest {
+  registration_id: number;
+  competition_name: string;
+  candidate_name: string;
+  test_duration_minutes: number;
+  questions_count: number;
+  screening_deadline: string | null;
+  screening_started: boolean;
+  screening_completed: boolean;
+  test_id: number | null;
+  test_status: string | null;
+  test_access_token: string | null;
+  time_remaining_seconds: number | null;
+  questions_by_section: Record<string, Question[]> | null;
+}
+
+export interface ScreeningSubmission {
+  answers: AnswerSubmission[];
+  time_per_question: QuestionTiming[];
+}
+
+export interface AnswerSubmission {
+  question_id: number;
+  candidate_answer: string | null;
+  candidate_code: string | null;
+  time_spent_seconds: number;
+}
+
+export interface QuestionTiming {
+  question_id: number;
+  time_seconds: number;
+  question_category: string | null;
+}
+
+export interface BehavioralMetrics {
+  id: number;
+  registration_id: number;
+  time_per_question: QuestionTiming[];
+  average_response_time: number | null;
+  fastest_response: number | null;
+  slowest_response: number | null;
+  median_response_time: number | null;
+  suspiciously_fast_count: number;
+  suspiciously_slow_count: number;
+  consistency_score: number;
+  anomaly_flags: AnomalyFlag[];
+  risk_score: number;
+  risk_factors: string[];
+}
+
+export interface AnomalyFlag {
+  type: string;
+  question_id: number;
+  time_seconds?: number;
+  description: string;
+  severity: "low" | "medium" | "high";
+}
+
+export interface ScreeningResult {
+  registration_id: number;
+  competition_name: string;
+  candidate_name: string;
+  screening_completed: boolean;
+  screening_score: number | null;
+  screening_percentile: number | null;
+  is_qualified: boolean | null;
+  qualification_rank: number | null;
+  total_questions: number;
+  questions_answered: number;
+  behavioral_metrics: BehavioralMetrics | null;
+}
+
+export interface RankingEntry {
+  rank: number;
+  registration_id: number;
+  candidate_id: number;
+  candidate_name: string;
+  candidate_email: string;
+  screening_score: number;
+  screening_completed_at: string | null;
+  is_qualified: boolean;
+  risk_score: number;
+  consistency_score: number;
+}
+
+export interface RankingsResponse {
+  competition_id: number;
+  competition_name: string;
+  total_registrations: number;
+  completed_screenings: number;
+  qualified_count: number;
+  rankings: RankingEntry[];
+  cutoff_score: number | null;
+}

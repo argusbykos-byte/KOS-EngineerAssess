@@ -65,3 +65,5 @@ class Test(Base):
         uselist=False,
         cascade="all, delete-orphan"
     )
+    competition_registration = relationship("CompetitionRegistration", back_populates="test", uselist=False)
+    behavioral_metrics = relationship("BehavioralMetrics", back_populates="test", uselist=False)
