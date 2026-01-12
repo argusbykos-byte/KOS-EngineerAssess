@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from typing import List, Optional
+from typing import List, Optional, Set
+import asyncio
 from app.database import get_db
 from app.models import Candidate, Test, Report
 from app.schemas.candidate import CandidateCreate, CandidateResponse, CandidateUpdate, CandidateWithTests
@@ -10,6 +11,11 @@ from app.services.ai_service import ai_service
 from app.services.resume_service import resume_service
 
 router = APIRouter()
+
+# CRITICAL: In-memory lock to prevent duplicate candidate creation
+# When candidate creation is in progress for an email, block additional requests
+_candidate_creation_locks: Set[str] = set()  # Set of emails currently being processed
+_lock = asyncio.Lock()  # Protects access to _candidate_creation_locks
 
 
 @router.get("/", response_model=List[CandidateWithTests])
@@ -73,54 +79,72 @@ async def create_candidate(
     db: AsyncSession = Depends(get_db)
 ):
     """Create a new candidate with optional resume upload."""
-    # Check if email already exists
-    existing = await db.execute(select(Candidate).where(Candidate.email == email))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Email already registered")
+    email_lower = email.lower().strip()
 
-    # Parse categories
-    category_list = [c.strip() for c in categories.split(",") if c.strip()]
+    # CRITICAL: Check if candidate creation is already in progress for this email
+    async with _lock:
+        if email_lower in _candidate_creation_locks:
+            raise HTTPException(
+                status_code=409,  # Conflict
+                detail="Candidate creation already in progress for this email. Please wait for it to complete."
+            )
+        # Acquire the lock for this email
+        _candidate_creation_locks.add(email_lower)
 
-    # Create candidate
-    candidate = Candidate(
-        name=name,
-        email=email,
-        test_duration_hours=test_duration_hours,
-        categories=category_list,
-        difficulty=difficulty
-    )
-    db.add(candidate)
-    await db.flush()
+    try:
+        # Check if email already exists in database
+        existing = await db.execute(select(Candidate).where(Candidate.email == email))
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Email already registered")
 
-    # Handle resume upload
-    if resume:
-        content = await resume.read()
-        file_path = await resume_service.save_resume(content, resume.filename, candidate.id)
-        candidate.resume_path = file_path
+        # Parse categories
+        category_list = [c.strip() for c in categories.split(",") if c.strip()]
 
-        # Extract text and skills
-        resume_text = resume_service.extract_text(content, resume.filename)
-        candidate.resume_text = resume_text
+        # Create candidate
+        candidate = Candidate(
+            name=name,
+            email=email,
+            test_duration_hours=test_duration_hours,
+            categories=category_list,
+            difficulty=difficulty
+        )
+        db.add(candidate)
+        await db.flush()
 
-        if resume_text:
-            skills = await ai_service.extract_skills_from_resume(resume_text)
-            candidate.extracted_skills = skills
+        # Handle resume upload (this is the slow part - skill extraction takes 2-3 minutes)
+        if resume:
+            content = await resume.read()
+            file_path = await resume_service.save_resume(content, resume.filename, candidate.id)
+            candidate.resume_path = file_path
 
-    await db.commit()
-    await db.refresh(candidate)
+            # Extract text and skills
+            resume_text = resume_service.extract_text(content, resume.filename)
+            candidate.resume_text = resume_text
 
-    return CandidateResponse(
-        id=candidate.id,
-        name=candidate.name,
-        email=candidate.email,
-        resume_path=candidate.resume_path,
-        extracted_skills=candidate.extracted_skills,
-        test_duration_hours=candidate.test_duration_hours,
-        categories=candidate.categories or [],
-        difficulty=candidate.difficulty,
-        created_at=candidate.created_at,
-        updated_at=candidate.updated_at
-    )
+            if resume_text:
+                skills = await ai_service.extract_skills_from_resume(resume_text)
+                candidate.extracted_skills = skills
+
+        await db.commit()
+        await db.refresh(candidate)
+
+        return CandidateResponse(
+            id=candidate.id,
+            name=candidate.name,
+            email=candidate.email,
+            resume_path=candidate.resume_path,
+            extracted_skills=candidate.extracted_skills,
+            test_duration_hours=candidate.test_duration_hours,
+            categories=candidate.categories or [],
+            difficulty=candidate.difficulty,
+            created_at=candidate.created_at,
+            updated_at=candidate.updated_at
+        )
+
+    finally:
+        # CRITICAL: Always release the lock, even if an error occurred
+        async with _lock:
+            _candidate_creation_locks.discard(email_lower)
 
 
 @router.get("/{candidate_id}", response_model=CandidateWithTests)

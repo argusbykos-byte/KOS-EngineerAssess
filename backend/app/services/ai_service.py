@@ -501,6 +501,33 @@ DEFAULT_QUESTIONS = {
             "expected_answer": "Initialize weights to zeros, maintain buffer of reference samples. Process: 1) Shift buffer, add new accel sample. 2) Estimate noise: y = dot(weights, buffer). 3) Error: e = ppg - y. 4) Update weights: w = w + mu * e * buffer. Return e (cleaned signal). Step size mu: too large = unstable/oscillates, too small = slow adaptation. Typical: 0.001-0.1. Normalized LMS (NLMS) adapts mu based on signal power for stability.",
             "hints": ["LMS minimizes mean square error between prediction and actual", "The reference signal should be correlated with the noise, not the desired signal", "Consider normalized LMS for better stability"]
         }
+    ],
+    # BUG 3 & 4 FIX: Add default questions for general_engineering category
+    "general_engineering": [
+        {
+            "question_text": "Explain the difference between unit tests, integration tests, and end-to-end tests. When would you use each type, and what are the trade-offs in terms of coverage, speed, and maintenance?",
+            "question_code": None,
+            "expected_answer": "Unit tests: test individual functions/methods in isolation, fast, easy to maintain, but miss integration issues. Integration tests: test multiple components together, catch interface bugs, slower, more complex setup. E2E tests: test full system from user perspective, highest confidence but slowest, flakiest, hardest to maintain. Testing pyramid: many unit tests, fewer integration, fewest E2E. Trade-off: coverage vs speed vs maintenance cost.",
+            "hints": ["Think about the testing pyramid", "Consider what types of bugs each test level catches", "What happens when tests fail - how easy is it to find the root cause?"]
+        },
+        {
+            "question_text": "What is the difference between optimistic and pessimistic locking in database systems? Give an example scenario where each would be preferred.",
+            "question_code": None,
+            "expected_answer": "Pessimistic: lock data before reading, prevents conflicts but reduces concurrency. Good for high-contention scenarios (bank transfers). Optimistic: read without locking, check for conflicts before commit (using version numbers or timestamps). Good for low-contention, read-heavy workloads (user profiles). Optimistic scales better but may require retry logic on conflicts.",
+            "hints": ["Consider what happens when two users try to edit the same record", "Think about throughput vs consistency trade-offs", "Version numbers and timestamps are key to optimistic locking"]
+        },
+        {
+            "question_text": "Explain how you would debug a production issue where an API endpoint is intermittently returning 500 errors. Walk through your debugging approach step by step.",
+            "question_code": None,
+            "expected_answer": "1) Check logs for error messages and stack traces. 2) Look at metrics: error rate, latency percentiles, resource usage. 3) Check for patterns: time-based, user-based, input-based. 4) Review recent deployments or config changes. 5) Check dependencies: database, external APIs, queues. 6) Try to reproduce with specific inputs. 7) Add additional logging/tracing if needed. 8) Use APM tools to trace request flow. Key: systematic elimination, correlate with timeline.",
+            "hints": ["Start with logs and metrics", "Look for patterns in when errors occur", "Consider external dependencies like databases and APIs"]
+        },
+        {
+            "question_text": "What are the key differences between REST and GraphQL APIs? When would you choose one over the other?",
+            "question_code": None,
+            "expected_answer": "REST: resource-based URLs, fixed response structures, multiple endpoints, HTTP verbs for operations, simpler caching. GraphQL: single endpoint, client specifies exact data needed, reduces over-fetching/under-fetching, typed schema, more complex caching. Choose REST for: simple CRUD, public APIs, caching-heavy. Choose GraphQL for: complex nested data, mobile apps (bandwidth), rapidly evolving front-ends, multiple client types.",
+            "hints": ["Think about over-fetching and under-fetching of data", "Consider caching strategies for each", "Mobile vs web clients may have different needs"]
+        }
     ]
 }
 
@@ -829,8 +856,15 @@ Return a JSON array of question objects with this structure:
   "question_text": "The question prompt",
   "question_code": "Code snippet if applicable (for coding/code_review), null otherwise",
   "expected_answer": "Brief description of expected answer or solution approach",
-  "hints": ["Optional hint 1", "Optional hint 2"]
+  "hints": ["Hint 1", "Hint 2"]
 }}
+
+UX 3 FIX - HINT GUIDELINES:
+- Hints should be DIRECTIONAL, not revealing (guide thinking, don't give answers)
+- Good hints: "Consider X", "Think about Y", "What happens when Z?"
+- Bad hints: "The answer is X", "Use Y formula", "The solution involves Z"
+- Hints should help a stuck candidate take one step forward
+- 1-2 hints per question is ideal, keep them SHORT (1 sentence each)
 
 Return ONLY the JSON array, no other text."""
                 },
@@ -1502,19 +1536,27 @@ Your goal is to GUIDE, not GRADE. Be encouraging and constructive.
 
 Category: {category}
 
+IMPORTANT - UX 2 FIX: First assess the answer quality:
+- EXCELLENT (80%+ of key concepts, deep understanding): Praise them! Return mostly STRENGTHS, minimal/no hints.
+- GOOD (50-80% coverage): Balanced feedback with both strengths and gentle guidance.
+- NEEDS WORK (<50%): Focus on constructive hints to guide improvement.
+
+For EXCELLENT answers, say things like "Excellent coverage!", "Great approach!", "You've nailed the key concepts!"
+Do NOT give unnecessary hints for already strong answers - it can be discouraging.
+
 Provide quick, actionable feedback:
-1. HINTS: 1-2 subtle suggestions to improve the answer (if needed)
-2. MISSING: 1-2 key points the answer should address (if any are missing)
-3. STRENGTHS: 1-2 things that are good about the current answer
+1. STRENGTHS: What's good about the answer (ALWAYS include if answer has any merit)
+2. HINTS: Subtle suggestions to improve (ONLY if genuinely needed - skip for excellent answers)
+3. MISSING: Key points to address (ONLY if significant gaps exist)
 
 Keep feedback SHORT (1 sentence each). Be encouraging.
 Do NOT give away the answer directly - just guide them.
 
 Return a JSON object:
 {{
-  "hints": ["Short hint 1", "Short hint 2"],
-  "missing_points": ["Missing concept 1"],
-  "strengths": ["What's good 1"]
+  "hints": ["Short hint if needed"],
+  "missing_points": ["Missing concept if any"],
+  "strengths": ["Strength 1", "Strength 2"]
 }}
 
 Return ONLY the JSON object. Keep it brief and helpful."""

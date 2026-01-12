@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { feedbackApi } from "@/lib/api";
+import { formatPacificDateTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -203,7 +204,7 @@ export default function SuggestionsPage() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+    return formatPacificDateTime(dateString);
   };
 
   if (loading) {

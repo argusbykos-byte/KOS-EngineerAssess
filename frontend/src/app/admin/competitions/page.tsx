@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { competitionsApi } from "@/lib/api";
+import { formatPacificDate } from "@/lib/utils";
 import { Competition } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -173,9 +174,9 @@ export default function AdminCompetitionsPage() {
     return <Badge variant={variant}>{label}</Badge>;
   };
 
-  const formatDate = (dateStr: string | null) => {
+  const formatDatePT = (dateStr: string | null) => {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString("en-US", {
+    return formatPacificDate(dateStr, {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -418,7 +419,7 @@ export default function AdminCompetitionsPage() {
                       {comp.registration_count.toLocaleString()} / {comp.max_participants.toLocaleString()}
                     </TableCell>
                     <TableCell>{comp.completed_count.toLocaleString()}</TableCell>
-                    <TableCell>{formatDate(comp.screening_deadline)}</TableCell>
+                    <TableCell>{formatDatePT(comp.screening_deadline)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Link href={`/admin/competitions/${comp.id}`}>

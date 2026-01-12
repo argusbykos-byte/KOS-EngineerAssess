@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
-from typing import List
+from typing import List, Dict, Set
 from datetime import datetime, timedelta
 import secrets
+import asyncio
 from app.database import get_db
 from app.models import Candidate, Test, Question, Answer, Report
 from app.models.test import TestStatus
@@ -15,6 +16,11 @@ from app.schemas.test import (
 from app.services.ai_service import ai_service, detect_programming_language
 
 router = APIRouter()
+
+# CRITICAL: In-memory lock to prevent duplicate test creation
+# When test generation is in progress for a candidate, block additional requests
+_test_generation_locks: Set[int] = set()  # Set of candidate_ids currently generating
+_lock = asyncio.Lock()  # Protects access to _test_generation_locks
 
 
 def calculate_break_time(duration_hours: int) -> tuple[int, int]:
@@ -63,111 +69,134 @@ async def list_tests(
 @router.post("/", response_model=TestResponse)
 async def create_test(test_data: TestCreate, db: AsyncSession = Depends(get_db)):
     """Create a new test for a candidate and generate questions."""
-    # Get candidate
-    result = await db.execute(select(Candidate).where(Candidate.id == test_data.candidate_id))
-    candidate = result.scalar_one_or_none()
+    candidate_id = test_data.candidate_id
 
-    if not candidate:
-        raise HTTPException(status_code=404, detail="Candidate not found")
-
-    # Generate unique access token
-    access_token = secrets.token_urlsafe(32)
-
-    # Calculate break time allowance
-    total_break, max_single_break = calculate_break_time(candidate.test_duration_hours)
-
-    # Create test
-    test = Test(
-        candidate_id=candidate.id,
-        access_token=access_token,
-        duration_hours=candidate.test_duration_hours,
-        status=TestStatus.PENDING.value,
-        total_break_time_seconds=total_break,
-        used_break_time_seconds=0,
-        break_count=0,
-        break_history=[]
-    )
-    db.add(test)
-    await db.flush()
-
-    # Map frontend categories to internal categories
-    category_mapping = {
-        "backend": "coding",
-        "ml": "coding",
-        "fullstack": "coding",
-        "python": "coding",
-        "react": "coding",
-        "signal_processing": "signal_processing"
-    }
-
-    # Determine which sections to include
-    sections = ["brain_teaser"]  # Always include
-
-    if candidate.categories:
-        if any(cat in ["backend", "ml", "fullstack", "python", "react"] for cat in candidate.categories):
-            sections.extend(["coding", "code_review", "system_design"])
-        if "signal_processing" in candidate.categories:
-            sections.append("signal_processing")
-        # Add general engineering for all technical candidates
-        if any(cat in ["backend", "ml", "fullstack", "python", "react", "signal_processing"] for cat in candidate.categories):
-            sections.append("general_engineering")
-    else:
-        sections.extend(["coding", "code_review", "system_design", "general_engineering"])
-
-    sections = list(set(sections))  # Remove duplicates
-
-    # Generate questions using AI
-    questions_data = await ai_service.generate_test_questions(
-        categories=sections,
-        difficulty=candidate.difficulty,
-        skills=candidate.extracted_skills or [],
-        resume_text=candidate.resume_text
-    )
-
-    # STEP 1: Create all questions first and collect them
-    created_questions = []
-    for section_order, category in enumerate(sections):
-        category_questions = questions_data.get(category, [])
-        for q_order, q_data in enumerate(category_questions):
-            question_text = q_data.get("question_text", "")
-            question_code = q_data.get("question_code")
-
-            # Detect programming language for code-related questions
-            language = None
-            if category in ["coding", "code_review"]:
-                language = detect_programming_language(
-                    text=question_text,
-                    code=question_code,
-                    category=category
-                )
-
-            question = Question(
-                test_id=test.id,
-                category=category,
-                section_order=section_order,
-                question_order=q_order,
-                question_text=question_text,
-                question_code=question_code,
-                expected_answer=q_data.get("expected_answer"),
-                hints=q_data.get("hints"),
-                max_score=100,
-                language=language
+    # CRITICAL: Check if test generation is already in progress for this candidate
+    async with _lock:
+        if candidate_id in _test_generation_locks:
+            raise HTTPException(
+                status_code=409,  # Conflict
+                detail="Test generation already in progress for this candidate. Please wait for it to complete."
             )
-            db.add(question)
-            created_questions.append(question)
+        # Acquire the lock for this candidate
+        _test_generation_locks.add(candidate_id)
 
-    # Flush to get question IDs assigned
-    await db.flush()
+    try:
+        # Get candidate
+        result = await db.execute(select(Candidate).where(Candidate.id == candidate_id))
+        candidate = result.scalar_one_or_none()
 
-    # STEP 2: Now create answer records with valid question IDs
-    for question in created_questions:
-        answer = Answer(question_id=question.id)
-        db.add(answer)
+        if not candidate:
+            raise HTTPException(status_code=404, detail="Candidate not found")
 
-    await db.commit()
-    await db.refresh(test)
+        # Generate unique access token
+        access_token = secrets.token_urlsafe(32)
 
-    return test
+        # Calculate break time allowance
+        total_break, max_single_break = calculate_break_time(candidate.test_duration_hours)
+
+        # Create test
+        test = Test(
+            candidate_id=candidate.id,
+            access_token=access_token,
+            duration_hours=candidate.test_duration_hours,
+            status=TestStatus.PENDING.value,
+            total_break_time_seconds=total_break,
+            used_break_time_seconds=0,
+            break_count=0,
+            break_history=[]
+        )
+        db.add(test)
+        await db.flush()
+
+        # Map frontend categories to internal categories
+        category_mapping = {
+            "backend": "coding",
+            "ml": "coding",
+            "fullstack": "coding",
+            "python": "coding",
+            "react": "coding",
+            "signal_processing": "signal_processing"
+        }
+
+        # Determine which sections to include
+        sections = ["brain_teaser"]  # Always include
+
+        # Define category groups for question type mapping
+        # BUG 5 FIX: Include "frontend" in the technical categories for coding sections
+        coding_categories = ["backend", "ml", "fullstack", "python", "react", "frontend", "javascript", "typescript"]
+
+        if candidate.categories:
+            # Add coding/code_review/system_design for any technical software role
+            if any(cat in coding_categories for cat in candidate.categories):
+                sections.extend(["coding", "code_review", "system_design"])
+            if "signal_processing" in candidate.categories:
+                sections.append("signal_processing")
+            # Add general engineering for all technical candidates
+            if any(cat in coding_categories + ["signal_processing"] for cat in candidate.categories):
+                sections.append("general_engineering")
+        else:
+            sections.extend(["coding", "code_review", "system_design", "general_engineering"])
+
+        sections = list(set(sections))  # Remove duplicates
+
+        # Generate questions using AI (this is the slow part - 2-4 minutes)
+        questions_data = await ai_service.generate_test_questions(
+            categories=sections,
+            difficulty=candidate.difficulty,
+            skills=candidate.extracted_skills or [],
+            resume_text=candidate.resume_text
+        )
+
+        # STEP 1: Create all questions first and collect them
+        created_questions = []
+        for section_order, category in enumerate(sections):
+            category_questions = questions_data.get(category, [])
+            for q_order, q_data in enumerate(category_questions):
+                question_text = q_data.get("question_text", "")
+                question_code = q_data.get("question_code")
+
+                # Detect programming language for code-related questions
+                language = None
+                if category in ["coding", "code_review"]:
+                    language = detect_programming_language(
+                        text=question_text,
+                        code=question_code,
+                        category=category
+                    )
+
+                question = Question(
+                    test_id=test.id,
+                    category=category,
+                    section_order=section_order,
+                    question_order=q_order,
+                    question_text=question_text,
+                    question_code=question_code,
+                    expected_answer=q_data.get("expected_answer"),
+                    hints=q_data.get("hints"),
+                    max_score=100,
+                    language=language
+                )
+                db.add(question)
+                created_questions.append(question)
+
+        # Flush to get question IDs assigned
+        await db.flush()
+
+        # STEP 2: Now create answer records with valid question IDs
+        for question in created_questions:
+            answer = Answer(question_id=question.id)
+            db.add(answer)
+
+        await db.commit()
+        await db.refresh(test)
+
+        return test
+
+    finally:
+        # CRITICAL: Always release the lock, even if an error occurred
+        async with _lock:
+            _test_generation_locks.discard(candidate_id)
 
 
 @router.get("/{test_id}", response_model=TestResponse)
@@ -288,6 +317,18 @@ async def get_test_by_token(access_token: str, db: AsyncSession = Depends(get_db
             draft_answer = question.answer.candidate_answer
             draft_code = question.answer.candidate_code
 
+        # BUG 6 FIX: Include submitted answer data for answered questions
+        # The frontend needs this to display submitted answers after page refresh
+        answer_data = None
+        if question.answer:
+            answer_data = {
+                "candidate_answer": question.answer.candidate_answer,
+                "candidate_code": question.answer.candidate_code,
+                "score": question.answer.score,
+                "feedback": question.answer.feedback,
+                "is_submitted": question.answer.is_submitted,
+            }
+
         questions_by_section[question.category].append({
             "id": question.id,
             "category": question.category,
@@ -298,7 +339,8 @@ async def get_test_by_token(access_token: str, db: AsyncSession = Depends(get_db
             "is_answered": is_answered,
             "draft_answer": draft_answer,
             "draft_code": draft_code,
-            "language": question.language
+            "language": question.language,
+            "answer": answer_data,  # BUG 6 FIX: Include full answer data
         })
 
     # Sort questions within each section

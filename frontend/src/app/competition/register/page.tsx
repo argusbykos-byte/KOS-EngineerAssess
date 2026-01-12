@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { competitionsApi } from "@/lib/api";
+import { formatPacificDate } from "@/lib/utils";
 import { Competition, RegistrationWithToken } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,9 +66,9 @@ function RegisterContent() {
     }
   };
 
-  const formatDate = (dateStr: string | null) => {
+  const formatDatePT = (dateStr: string | null) => {
     if (!dateStr) return "TBD";
-    return new Date(dateStr).toLocaleDateString("en-US", {
+    return formatPacificDate(dateStr, {
       year: "numeric",
       month: "long",
       day: "numeric",
@@ -127,7 +128,7 @@ function RegisterContent() {
               </p>
               {registration.screening_deadline && (
                 <p className="text-sm">
-                  <strong>Deadline:</strong> {formatDate(registration.screening_deadline)}
+                  <strong>Deadline:</strong> {formatDatePT(registration.screening_deadline)}
                 </p>
               )}
             </div>
@@ -199,7 +200,7 @@ function RegisterContent() {
             </div>
             <div>
               <Calendar className="w-5 h-5 mx-auto mb-1 text-muted-foreground" />
-              <p className="font-medium text-xs">{formatDate(competition?.screening_deadline || null).split(",")[0]}</p>
+              <p className="font-medium text-xs">{formatDatePT(competition?.screening_deadline || null).split(",")[0]}</p>
               <p className="text-xs text-muted-foreground">Deadline</p>
             </div>
           </div>

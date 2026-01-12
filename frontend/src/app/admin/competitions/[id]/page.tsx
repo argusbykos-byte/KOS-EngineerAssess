@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { competitionsApi } from "@/lib/api";
+import { formatPacificDate } from "@/lib/utils";
 import { CompetitionDetail, RankingsResponse } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -103,9 +104,9 @@ export default function CompetitionDetailPage() {
     return <Badge variant={variant}>{label}</Badge>;
   };
 
-  const formatDate = (dateStr: string | null) => {
+  const formatDatePT = (dateStr: string | null) => {
     if (!dateStr) return "-";
-    return new Date(dateStr).toLocaleDateString("en-US", {
+    return formatPacificDate(dateStr, {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -254,7 +255,7 @@ export default function CompetitionDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="text-sm font-bold">
-              {formatDate(competition.screening_deadline)}
+              {formatDatePT(competition.screening_deadline)}
             </div>
           </CardContent>
         </Card>
@@ -364,7 +365,7 @@ export default function CompetitionDetailPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {formatDate(entry.screening_completed_at)}
+                          {formatDatePT(entry.screening_completed_at)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -409,7 +410,7 @@ export default function CompetitionDetailPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-sm">
-                          {formatDate(reg.registered_at)}
+                          {formatDatePT(reg.registered_at)}
                         </TableCell>
                         <TableCell>
                           {reg.screening_completed ? (

@@ -3,6 +3,7 @@ import io
 import os
 import qrcode
 from datetime import datetime
+from app.utils.timezone import format_pacific_date
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -225,9 +226,9 @@ def generate_certificate_pdf(
     c.setFillColor(gray)
     c.drawCentredString(page_width / 2, y_pos, f"Overall Score: {int(overall_score)}%")
 
-    # Date
+    # Date - Convert to Pacific Time for display
     y_pos -= 35
-    formatted_date = test_date.strftime("%B %d, %Y")
+    formatted_date = format_pacific_date(test_date, "%B %d, %Y")
     c.drawCentredString(page_width / 2, y_pos, f"Awarded on {formatted_date}")
 
     # Certificate ID

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { competitionsApi } from "@/lib/api";
+import { formatPacificDate } from "@/lib/utils";
 import { Competition } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,13 +29,9 @@ export default function CompetitionLandingPage() {
     fetchCompetitions();
   }, []);
 
-  const formatDate = (dateStr: string | null) => {
+  const formatDatePT = (dateStr: string | null) => {
     if (!dateStr) return "TBD";
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+    return formatPacificDate(dateStr);
   };
 
   const getStatusBadge = (status: string) => {
@@ -137,7 +134,7 @@ export default function CompetitionLandingPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-muted-foreground" />
-                      <span>Deadline: {formatDate(competition.screening_deadline)}</span>
+                      <span>Deadline: {formatDatePT(competition.screening_deadline)}</span>
                     </div>
                   </div>
 

@@ -149,6 +149,9 @@ export default function TestPage() {
   const [batchSubmitProgress, setBatchSubmitProgress] = useState({ current: 0, total: 0 });
   const [showBatchSubmitConfirm, setShowBatchSubmitConfirm] = useState(false);
 
+  // Question card refs for scrolling
+  const questionRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
   // Live feedback state - persisted in localStorage (default ON for better UX)
   const [feedbackEnabled, setFeedbackEnabled] = useState(() => {
     if (typeof window !== "undefined") {
@@ -415,6 +418,55 @@ export default function TestPage() {
     localAnswersRef.current.set(questionId, { answer, code });
     setPendingCount(localAnswersRef.current.size);
   }, []);
+
+  // Scroll to next unanswered question after submission
+  const handleScrollToNext = useCallback((currentQuestionId: number) => {
+    if (!test) return;
+
+    const sections = test.questions_by_section;
+    const sectionNames = Object.keys(sections);
+    const currentSectionIndex = sectionNames.indexOf(currentSection);
+
+    // Find the next unanswered question in current section
+    const currentQuestions = sections[currentSection] || [];
+    const currentIndex = currentQuestions.findIndex(q => q.id === currentQuestionId);
+
+    // Look for next unanswered in current section
+    for (let i = currentIndex + 1; i < currentQuestions.length; i++) {
+      if (!currentQuestions[i].is_answered) {
+        const ref = questionRefs.current.get(currentQuestions[i].id);
+        if (ref) {
+          ref.scrollIntoView({ behavior: "smooth", block: "center" });
+          return;
+        }
+      }
+    }
+
+    // If all remaining questions in section are answered, check next sections
+    for (let s = currentSectionIndex + 1; s < sectionNames.length; s++) {
+      const sectionQuestions = sections[sectionNames[s]] || [];
+      const hasUnanswered = sectionQuestions.some(q => !q.is_answered);
+      if (hasUnanswered) {
+        // Switch to next section with unanswered questions
+        setCurrentSection(sectionNames[s]);
+        saveTestState(sectionNames[s]);
+        return;
+      }
+    }
+
+    // Check earlier sections too (wrap around)
+    for (let s = 0; s < currentSectionIndex; s++) {
+      const sectionQuestions = sections[sectionNames[s]] || [];
+      const hasUnanswered = sectionQuestions.some(q => !q.is_answered);
+      if (hasUnanswered) {
+        setCurrentSection(sectionNames[s]);
+        saveTestState(sectionNames[s]);
+        return;
+      }
+    }
+
+    // All questions answered - stay on current question
+  }, [test, currentSection, saveTestState]);
 
   // Handle save status changes from QuestionCard
   const handleSaveStatusChange = useCallback((questionId: number, hasUnsaved: boolean) => {
@@ -1366,17 +1418,28 @@ export default function TestPage() {
               </div>
 
               {currentQuestions.map((question, index) => (
-                <QuestionCard
+                <div
                   key={question.id}
-                  question={question}
-                  questionNumber={index + 1}
-                  totalQuestions={currentQuestions.length}
-                  onAnswerSubmitted={handleAnswerSubmitted}
-                  onSaveStatusChange={handleSaveStatusChange}
-                  onLocalChange={handleLocalChange}
-                  testToken={token}
-                  feedbackEnabled={feedbackEnabled}
-                />
+                  ref={(el) => {
+                    if (el) {
+                      questionRefs.current.set(question.id, el);
+                    } else {
+                      questionRefs.current.delete(question.id);
+                    }
+                  }}
+                >
+                  <QuestionCard
+                    question={question}
+                    questionNumber={index + 1}
+                    totalQuestions={currentQuestions.length}
+                    onAnswerSubmitted={handleAnswerSubmitted}
+                    onSaveStatusChange={handleSaveStatusChange}
+                    onLocalChange={handleLocalChange}
+                    onScrollToNext={() => handleScrollToNext(question.id)}
+                    testToken={token}
+                    feedbackEnabled={feedbackEnabled}
+                  />
+                </div>
               ))}
             </main>
           </div>

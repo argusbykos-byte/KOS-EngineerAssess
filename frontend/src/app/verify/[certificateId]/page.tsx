@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { certificatesApi } from "@/lib/api";
+import { formatPacificDate } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -172,11 +173,7 @@ export default function CertificateVerifyPage() {
                     <p className="text-xs text-muted-foreground">Date Issued</p>
                     <p className="font-semibold">
                       {result.test_date
-                        ? new Date(result.test_date).toLocaleDateString("en-US", {
-                            year: "numeric",
-                            month: "long",
-                            day: "numeric",
-                          })
+                        ? formatPacificDate(result.test_date)
                         : "N/A"}
                     </p>
                   </div>

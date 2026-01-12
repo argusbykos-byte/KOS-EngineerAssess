@@ -82,7 +82,8 @@ export function CodePlayground({
 
   // Fetch sample data details when selection changes
   useEffect(() => {
-    if (selectedSample) {
+    // Only fetch if a valid sample is selected (not "none" or empty)
+    if (selectedSample && selectedSample !== "none") {
       codeApi.getSample(selectedSample).then((response) => {
         setSampleData(response.data.data);
       }).catch(console.error);
@@ -113,7 +114,8 @@ export function CodePlayground({
     try {
       const response = await codeApi.execute({
         code,
-        sample_data_key: selectedSample || undefined,
+        // Only pass sample_data_key if a valid sample is selected
+        sample_data_key: selectedSample && selectedSample !== "none" ? selectedSample : undefined,
       });
 
       setSuccess(response.data.success);

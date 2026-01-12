@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -24,12 +24,14 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { testsApi, reportsApi } from "@/lib/api";
 import { Candidate, TestSummary } from "@/types";
 import {
   getCategoryLabel,
   getDifficultyLabel,
   getScoreColor,
+  formatPacificDate,
 } from "@/lib/utils";
 import {
   Play,
@@ -48,6 +50,8 @@ import {
   History,
   Calendar,
   AlertTriangle,
+  Sparkles,
+  Brain,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -57,10 +61,10 @@ interface CandidateTableProps {
   onRefresh: () => void;
 }
 
-// Helper to format date
+// Helper to format date in Pacific Time
 function formatDate(dateString: string | null | undefined): string {
   if (!dateString) return "N/A";
-  return new Date(dateString).toLocaleDateString("en-US", {
+  return formatPacificDate(dateString, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -86,6 +90,43 @@ function TestStatusBadge({ status }: { status: string }) {
   );
 }
 
+// Progress messages for AI operations - these cycle indefinitely until API returns
+const TEST_PROGRESS_MESSAGES = [
+  "Connecting to Kimi2 AI...",
+  "Analyzing candidate profile and skills...",
+  "Generating brain teaser questions...",
+  "Creating personalized coding challenges...",
+  "Building code review exercises...",
+  "Designing system design problems...",
+  "Adding signal processing questions...",
+  "Crafting follow-up scenarios...",
+  "Reviewing question difficulty balance...",
+  "Optimizing question set for candidate level...",
+  "Still generating questions (this can take 10-30 minutes)...",
+  "AI is generating multiple question batches...",
+  "Each category requires a separate AI call...",
+  "Complex profiles need more time for personalization...",
+  "Still working on personalized questions...",
+  "AI is ensuring question quality and relevance...",
+  "Almost there, finalizing question set...",
+];
+
+const REPORT_PROGRESS_MESSAGES = [
+  "Connecting to Kimi2 AI...",
+  "Loading candidate answers...",
+  "Evaluating brain teaser responses...",
+  "Scoring coding challenge solutions...",
+  "Reviewing code review answers...",
+  "Assessing system design responses...",
+  "Analyzing signal processing work...",
+  "Calculating section scores...",
+  "Generating detailed feedback...",
+  "Creating AI summary...",
+  "Determining final recommendation...",
+  "Still analyzing (this can take 1-3 minutes)...",
+  "Almost there, finalizing report...",
+];
+
 export function CandidateTable({
   candidates,
   onDelete,
@@ -100,6 +141,135 @@ export function CandidateTable({
   const [expandedCandidates, setExpandedCandidates] = useState<Set<number>>(new Set());
   const [showDeleteTestDialog, setShowDeleteTestDialog] = useState(false);
   const [testToDelete, setTestToDelete] = useState<{ id: number; candidateName: string } | null>(null);
+
+  // CRITICAL BUG FIX: Global operation state to prevent double-clicks and show progress
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationType, setGenerationType] = useState<"test" | "report" | null>(null);
+  const [progressMessage, setProgressMessage] = useState("");
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [showCloseOption, setShowCloseOption] = useState(false); // Show close button after timeout
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const elapsedIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const operationInProgressRef = useRef(false); // Mutex to prevent double-clicks
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Cleanup intervals on unmount
+  useEffect(() => {
+    return () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+      }
+      if (elapsedIntervalRef.current) {
+        clearInterval(elapsedIntervalRef.current);
+      }
+    };
+  }, []);
+
+  // Format elapsed time as mm:ss
+  const formatElapsedTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  // Start progress animation for long-running operations
+  // CRITICAL: This animation runs UNTIL stopProgressAnimation is called (when API returns)
+  const startProgressAnimation = (type: "test" | "report") => {
+    const messages = type === "test" ? TEST_PROGRESS_MESSAGES : REPORT_PROGRESS_MESSAGES;
+    let messageIndex = 0;
+    let percent = 0;
+    let tickCount = 0;
+
+    setProgressMessage(messages[0]);
+    setProgressPercent(0);
+    setElapsedSeconds(0);
+
+    // Track elapsed time
+    elapsedIntervalRef.current = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+
+    // Progress animation - cycles through messages, progress caps at 85% until API returns
+    progressIntervalRef.current = setInterval(() => {
+      tickCount++;
+
+      // Progress increases slowly and caps at 85% - never shows "complete" until API returns
+      if (percent < 40) {
+        percent += Math.random() * 3 + 1; // Initial progress
+      } else if (percent < 60) {
+        percent += Math.random() * 2 + 0.5; // Slower mid progress
+      } else if (percent < 75) {
+        percent += Math.random() * 1 + 0.2; // Even slower
+      } else if (percent < 85) {
+        percent += Math.random() * 0.5 + 0.1; // Very slow near cap
+      }
+      percent = Math.min(percent, 85); // Cap at 85% until API actually returns
+
+      // Cycle through messages - loop back to later messages after going through all
+      const cycleStart = Math.max(0, messages.length - 5); // Loop through last 5 messages
+      if (messageIndex < messages.length - 1) {
+        // Go through all messages first
+        if (tickCount % 3 === 0) { // Change message every ~2.4 seconds
+          messageIndex++;
+        }
+      } else {
+        // After going through all, cycle through the last few
+        if (tickCount % 4 === 0) {
+          messageIndex = cycleStart + ((messageIndex - cycleStart + 1) % (messages.length - cycleStart));
+        }
+      }
+
+      setProgressPercent(percent);
+      setProgressMessage(messages[messageIndex]);
+    }, 800);
+  };
+
+  // Stop progress animation - ONLY called when API actually returns
+  const stopProgressAnimation = (success: boolean = true) => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+    if (elapsedIntervalRef.current) {
+      clearInterval(elapsedIntervalRef.current);
+      elapsedIntervalRef.current = null;
+    }
+
+    if (success) {
+      setProgressPercent(100);
+      setProgressMessage("Complete!");
+    } else {
+      setProgressMessage("Cancelled or failed");
+    }
+
+    // Brief delay before closing to show completion state
+    setTimeout(() => {
+      setIsGenerating(false);
+      setGenerationType(null);
+      setProgressPercent(0);
+      setProgressMessage("");
+      setElapsedSeconds(0);
+      setShowCloseOption(false);
+      operationInProgressRef.current = false;
+      abortControllerRef.current = null;
+    }, success ? 800 : 300);
+  };
+
+  // Handle closing after timeout (user wants to check later)
+  const handleCloseAndCheckLater = () => {
+    stopProgressAnimation(false);
+    setLoading(null);
+    onRefresh(); // Refresh the candidate list in case the operation succeeded
+  };
+
+  // Cancel the current operation
+  const handleCancelOperation = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    stopProgressAnimation(false);
+  };
 
   const toggleExpanded = (candidateId: number) => {
     const newExpanded = new Set(expandedCandidates);
@@ -117,20 +287,58 @@ export function CandidateTable({
   };
 
   const handleCreateTest = async (candidateId: number) => {
+    // BUG 1 FIX: Prevent double-clicks with mutex
+    if (operationInProgressRef.current || isGenerating) {
+      console.log("Operation already in progress, ignoring click");
+      return;
+    }
+    operationInProgressRef.current = true;
+
     setLoading(candidateId);
+    setIsGenerating(true);
+    setGenerationType("test");
+    startProgressAnimation("test");
+
     try {
       const candidate = candidates.find(c => c.id === candidateId);
       const response = await testsApi.create(candidateId);
       const testLink = `${getBaseUrl()}/test/${response.data.access_token}`;
 
-      // Show dialog with the link
-      setGeneratedTestLink(testLink);
-      setGeneratedForCandidate(candidate?.name || "");
-      setShowLinkDialog(true);
+      // Stop progress animation before showing success
+      stopProgressAnimation();
 
-      onRefresh();
-    } catch (error) {
-      console.error("Error creating test:", error);
+      // Show dialog with the link (after a brief delay for progress to show 100%)
+      setTimeout(() => {
+        setGeneratedTestLink(testLink);
+        setGeneratedForCandidate(candidate?.name || "");
+        setShowLinkDialog(true);
+        onRefresh();
+      }, 600);
+    } catch (err: unknown) {
+      console.error("Error creating test:", err);
+
+      // Type the error properly
+      const axiosError = err as {
+        code?: string;
+        response?: { status?: number; data?: { detail?: string } };
+        message?: string;
+      };
+
+      // Check if this is a timeout error (backend might still be processing)
+      const isTimeout = axiosError.code === "ECONNABORTED" || axiosError.message?.includes("timeout");
+      const isNetworkError = axiosError.code === "ERR_NETWORK" || !axiosError.response;
+
+      if (isTimeout || isNetworkError) {
+        // Don't show error for timeout - backend may still be processing
+        setProgressMessage("Still processing... This is taking longer than expected.");
+        setShowCloseOption(true);
+        console.log("Request timed out or network error - backend may still be processing");
+        return; // Don't stop the animation or reset state
+      }
+
+      // For actual HTTP errors, stop and show failure
+      stopProgressAnimation(false);
+      operationInProgressRef.current = false;
     } finally {
       setLoading(null);
     }
@@ -143,12 +351,50 @@ export function CandidateTable({
   };
 
   const handleGenerateReport = async (testId: number) => {
+    // BUG 1 FIX: Prevent double-clicks with mutex
+    if (operationInProgressRef.current || isGenerating) {
+      console.log("Operation already in progress, ignoring click");
+      return;
+    }
+    operationInProgressRef.current = true;
+
     setLoading(testId);
+    setIsGenerating(true);
+    setGenerationType("report");
+    startProgressAnimation("report");
+
     try {
       await reportsApi.generate(testId);
-      onRefresh();
-    } catch (error) {
-      console.error("Error generating report:", error);
+      stopProgressAnimation();
+      // Delay refresh to allow progress UI to show 100%
+      setTimeout(() => {
+        onRefresh();
+      }, 600);
+    } catch (err: unknown) {
+      console.error("Error generating report:", err);
+
+      // Type the error properly
+      const axiosError = err as {
+        code?: string;
+        response?: { status?: number; data?: { detail?: string } };
+        message?: string;
+      };
+
+      // Check if this is a timeout error (backend might still be processing)
+      const isTimeout = axiosError.code === "ECONNABORTED" || axiosError.message?.includes("timeout");
+      const isNetworkError = axiosError.code === "ERR_NETWORK" || !axiosError.response;
+
+      if (isTimeout || isNetworkError) {
+        // Don't show error for timeout - backend may still be processing
+        setProgressMessage("Still processing... This is taking longer than expected.");
+        setShowCloseOption(true);
+        console.log("Request timed out or network error - backend may still be processing");
+        return; // Don't stop the animation or reset state
+      }
+
+      // For actual HTTP errors, stop and show failure
+      stopProgressAnimation(false);
+      operationInProgressRef.current = false;
     } finally {
       setLoading(null);
     }
@@ -252,14 +498,14 @@ export function CandidateTable({
                 size="sm"
                 variant="secondary"
                 onClick={() => handleGenerateReport(test.id)}
-                disabled={loading === test.id}
+                disabled={loading === test.id || isGenerating}
               >
                 {loading === test.id ? (
                   <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                 ) : (
                   <FileText className="w-4 h-4 mr-1" />
                 )}
-                Generate Report
+                {loading === test.id ? "Generating..." : "Generate Report"}
               </Button>
             )}
 
@@ -294,6 +540,93 @@ export function CandidateTable({
 
   return (
     <>
+      {/* CRITICAL BUG FIX: AI Operation Progress Dialog - stays open until API returns */}
+      <Dialog open={isGenerating} onOpenChange={() => {}}>
+        <DialogContent
+          className="sm:max-w-md"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {generationType === "test" ? (
+                <>
+                  <Sparkles className="w-5 h-5 text-amber-500 animate-pulse" />
+                  Generating Test Questions
+                </>
+              ) : (
+                <>
+                  <Brain className="w-5 h-5 text-blue-500 animate-pulse" />
+                  Generating Assessment Report
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              {showCloseOption
+                ? "The request is taking longer than expected. The backend may still be processing."
+                : generationType === "test"
+                  ? "Kimi2 AI is creating personalized questions. This can take 10-30 minutes for complex profiles with multiple categories."
+                  : "Kimi2 AI is analyzing answers and generating a detailed assessment. This typically takes 1-3 minutes."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">{progressMessage}</span>
+                <span className="font-medium">{Math.round(progressPercent)}%</span>
+              </div>
+              <Progress value={progressPercent} className="h-2" />
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>Elapsed: {formatElapsedTime(elapsedSeconds)}</span>
+              </div>
+              <span className="text-muted-foreground">
+                {showCloseOption
+                  ? "Backend is still working..."
+                  : elapsedSeconds > 600
+                    ? "Still working, complex profiles take longer..."
+                    : elapsedSeconds > 300
+                      ? "Taking a while, please be patient..."
+                      : elapsedSeconds > 120
+                        ? "AI is working hard on this..."
+                        : "Please wait, do not close this window"}
+              </span>
+            </div>
+
+            {/* Show close option after timeout */}
+            {showCloseOption && (
+              <div className="pt-4 border-t">
+                <p className="text-sm text-muted-foreground mb-3">
+                  You can close this dialog and check the candidate list later.
+                  The test/report may have already been created.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={handleCloseAndCheckLater}
+                  className="w-full"
+                >
+                  Close & Check Candidate List
+                </Button>
+              </div>
+            )}
+          </div>
+          {!showCloseOption && (
+            <DialogFooter>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCancelOperation}
+                className="text-destructive hover:text-destructive"
+              >
+                Cancel
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Delete Test Confirmation Dialog */}
       <Dialog open={showDeleteTestDialog} onOpenChange={setShowDeleteTestDialog}>
         <DialogContent>
@@ -517,7 +850,7 @@ export function CandidateTable({
                   <Button
                     size="sm"
                     onClick={() => handleCreateTest(candidate.id)}
-                    disabled={loading === candidate.id}
+                    disabled={loading === candidate.id || isGenerating}
                     variant={tests.length > 0 ? "outline" : "default"}
                   >
                     {loading === candidate.id ? (
@@ -527,7 +860,7 @@ export function CandidateTable({
                     ) : (
                       <Play className="w-4 h-4 mr-1" />
                     )}
-                    {tests.length > 0 ? "New Test" : "Create Test"}
+                    {loading === candidate.id ? "Generating..." : tests.length > 0 ? "New Test" : "Create Test"}
                   </Button>
 
                   <Button

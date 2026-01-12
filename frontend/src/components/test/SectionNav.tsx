@@ -8,17 +8,21 @@ import {
   Flame,
   Building2,
   Activity,
+  Wrench,
+  Brain,
   CheckCircle,
   Circle,
 } from "lucide-react";
 
 // Mythological icons for each category
 const categoryIcons: Record<string, React.ElementType> = {
-  brain_teaser: Scroll,      // Sibyl - prophetic scrolls
-  coding: Hammer,            // Hephaestus - forge
-  code_review: Flame,        // Prometheus - fire of knowledge
-  system_design: Building2,  // Athena - architecture
+  brain_teaser: Scroll,        // Sibyl - prophetic scrolls
+  coding: Hammer,              // Hephaestus - forge
+  code_review: Flame,          // Prometheus - fire of knowledge
+  system_design: Building2,    // Athena - architecture
   signal_processing: Activity, // Asclepius - life signs
+  general_engineering: Wrench, // Daedalus - craftsman's tools
+  ml_algo: Brain,              // Prometheus - foresight/ML
 };
 
 interface SectionNavProps {
@@ -32,19 +36,26 @@ export function SectionNav({
   currentSection,
   onSectionChange,
 }: SectionNavProps) {
+  // Order categories for consistent display
+  // Any categories from the test that aren't in this list will appear at the end
   const sectionOrder = [
-    "brain_teaser",
-    "coding",
-    "code_review",
     "system_design",
+    "code_review",
+    "general_engineering",
+    "coding",
+    "brain_teaser",
     "signal_processing",
+    "ml_algo",
   ];
 
+  // First include ordered sections that exist in the test, then any remaining sections
   const orderedSections = sectionOrder.filter((s) => sections[s]);
+  const remainingSections = Object.keys(sections).filter((s) => !sectionOrder.includes(s));
+  const allSections = [...orderedSections, ...remainingSections];
 
   return (
     <nav className="space-y-1">
-      {orderedSections.map((section) => {
+      {allSections.map((section) => {
         const questions = sections[section];
         const answeredCount = questions.filter((q) => q.is_answered).length;
         const isComplete = answeredCount === questions.length;

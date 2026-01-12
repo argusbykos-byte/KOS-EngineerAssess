@@ -48,6 +48,7 @@ interface QuestionCardProps {
   onAnswerSubmitted: (questionId?: number, score?: number, feedback?: string) => void;
   onSaveStatusChange?: (questionId: number, hasUnsaved: boolean) => void;
   onLocalChange?: (questionId: number, answer: string, code: string) => void;
+  onScrollToNext?: () => void;
   testToken?: string;
   feedbackEnabled?: boolean;
 }
@@ -67,6 +68,7 @@ export function QuestionCard({
   onAnswerSubmitted,
   onSaveStatusChange,
   onLocalChange,
+  onScrollToNext,
   testToken,
   feedbackEnabled = false,
 }: QuestionCardProps) {
@@ -127,6 +129,10 @@ export function QuestionCard({
   const [showHint, setShowHint] = useState(false);
   const [pasteAttempted, setPasteAttempted] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+
+  // Submission success state - show success message before auto-scroll
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
 
   // Track if content has been edited after submission
   const [editedAfterSubmit, setEditedAfterSubmit] = useState(false);
@@ -422,6 +428,7 @@ export function QuestionCard({
 
   const handleConfirmSubmit = async () => {
     setShowSubmitConfirm(false);
+    setSubmissionError(null);
 
     // Sync any pending changes first
     if (debounceTimerRef.current) {
@@ -431,38 +438,58 @@ export function QuestionCard({
 
     const finalTimeSpent = Math.floor((Date.now() - startTimeRef.current) / 1000);
 
+    // Set loading state and mark as submitted optimistically
     setLoading(true);
-    try {
-      await answersApi.submit({
-        question_id: question.id,
-        candidate_answer: answer || undefined,
-        candidate_code: code || undefined,
-        time_spent_seconds: finalTimeSpent,
-      });
+    setSubmitted(true);
+    setEditedAfterSubmit(false);
+    originalSubmittedAnswer.current = answer;
+    originalSubmittedCode.current = code;
+    lastSyncedAnswerRef.current = answer;
+    lastSyncedCodeRef.current = code;
 
-      setSubmitted(true);
-      setEditedAfterSubmit(false);
-      originalSubmittedAnswer.current = answer;
-      originalSubmittedCode.current = code;
-      lastSyncedAnswerRef.current = answer;
-      lastSyncedCodeRef.current = code;
-
-      // Clear local storage after successful submit
-      if (testToken) {
-        try {
-          localStorage.removeItem(getStorageKey(testToken, question.id));
-        } catch (e) {
-          console.error("Error clearing localStorage:", e);
-        }
+    // Clear local storage immediately (optimistic)
+    if (testToken) {
+      try {
+        localStorage.removeItem(getStorageKey(testToken, question.id));
+      } catch (e) {
+        console.error("Error clearing localStorage:", e);
       }
-
-      // Notify parent with question ID for submission tracking
-      onAnswerSubmitted(question.id);
-    } catch (error) {
-      console.error("Error submitting answer:", error);
-    } finally {
-      setLoading(false);
     }
+
+    // Scroll to next question IMMEDIATELY - don't wait for API
+    setTimeout(() => {
+      if (onScrollToNext) {
+        onScrollToNext();
+      }
+    }, 500); // Small delay for visual transition
+
+    // Fire off API call in background (non-blocking)
+    answersApi.submit({
+      question_id: question.id,
+      candidate_answer: answer || undefined,
+      candidate_code: code || undefined,
+      time_spent_seconds: finalTimeSpent,
+    })
+      .then(() => {
+        // API succeeded - show brief success state
+        setShowSuccess(true);
+        setLoading(false);
+
+        // Notify parent to refresh data
+        onAnswerSubmitted(question.id);
+
+        // Hide success after a moment
+        setTimeout(() => setShowSuccess(false), 1500);
+      })
+      .catch((error) => {
+        console.error("Error submitting answer:", error);
+        // Revert optimistic update on error
+        setSubmitted(false);
+        setLoading(false);
+        setSubmissionError("Failed to submit. Please try again.");
+        // Clear error after 5 seconds
+        setTimeout(() => setSubmissionError(null), 5000);
+      });
   };
 
   // Render save status
@@ -547,7 +574,9 @@ export function QuestionCard({
             "border-l-4 border-l-green-500 border-green-500/30 bg-green-500/5",
           submitted &&
             editedAfterSubmit &&
-            "border-l-4 border-l-yellow-500 border-yellow-500/30 bg-yellow-500/5"
+            "border-l-4 border-l-yellow-500 border-yellow-500/30 bg-yellow-500/5",
+          showSuccess &&
+            "ring-2 ring-green-500 ring-offset-2 ring-offset-background"
         )}
       >
         <CardHeader>
@@ -698,6 +727,24 @@ export function QuestionCard({
             />
           </div>
 
+          {/* Success Message */}
+          {showSuccess && (
+            <div className="p-3 rounded-lg bg-green-500/20 border border-green-500/30 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-green-500" />
+                <p className="text-sm font-medium text-green-500">Evaluation complete!</p>
+              </div>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {submissionError && (
+            <div className="p-3 rounded-lg bg-red-500/20 border border-red-500/30 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+              <p className="text-sm text-red-500">{submissionError}</p>
+            </div>
+          )}
+
           <div className="flex justify-between items-center">
             <div className="text-xs text-muted-foreground">
               {submitted && question.answer?.previous_score !== undefined && (
@@ -706,16 +753,22 @@ export function QuestionCard({
             </div>
             <Button
               onClick={handleSubmitClick}
-              disabled={loading || (!answer.trim() && !code.trim())}
+              disabled={loading || showSuccess || (!answer.trim() && !code.trim())}
               className={cn(
                 "transition-all duration-300",
-                submitted && !editedAfterSubmit && "bg-green-600 hover:bg-green-700"
+                submitted && !editedAfterSubmit && !showSuccess && "bg-green-600 hover:bg-green-700",
+                showSuccess && "bg-green-600"
               )}
             >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Evaluating...
+                </>
+              ) : showSuccess ? (
+                <>
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Submitted!
                 </>
               ) : submitted && !editedAfterSubmit ? (
                 <>

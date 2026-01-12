@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { reportsApi } from "@/lib/api";
+import { formatPacificDateTime, formatPacificTime } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -269,7 +270,7 @@ export default function CheatingLogsPage() {
                             </DialogTitle>
                             <DialogDescription>
                               Test ID: {log.test_id} | Updated:{" "}
-                              {new Date(log.updated_at).toLocaleString()}
+                              {formatPacificDateTime(log.updated_at)}
                             </DialogDescription>
                           </DialogHeader>
 
@@ -285,7 +286,7 @@ export default function CheatingLogsPage() {
                                 </p>
                                 {log.disqualified_at && (
                                   <p className="text-xs text-muted-foreground mt-2">
-                                    At: {new Date(log.disqualified_at).toLocaleString()}
+                                    At: {formatPacificDateTime(log.disqualified_at)}
                                   </p>
                                 )}
                               </div>
@@ -338,7 +339,7 @@ export default function CheatingLogsPage() {
                                             {event.type.replace(/_/g, " ").toUpperCase()}
                                           </span>
                                           <span className="text-xs text-muted-foreground">
-                                            {new Date(event.timestamp).toLocaleTimeString()}
+                                            {formatPacificTime(event.timestamp)}
                                           </span>
                                         </div>
                                         {event.details && (

@@ -2,12 +2,16 @@ from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Larg
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
+from app.utils.timezone import get_pacific_date_iso
 import uuid
 
 
 def generate_certificate_id():
-    """Generate unique certificate ID in format KOS-YYYYMMDD-XXXXX."""
-    date_part = datetime.utcnow().strftime("%Y%m%d")
+    """Generate unique certificate ID in format KOS-YYYYMMDD-XXXXX.
+
+    Uses Pacific Time for the date portion since KOS is based in California.
+    """
+    date_part = get_pacific_date_iso(datetime.utcnow()).replace("-", "")
     unique_part = uuid.uuid4().hex[:5].upper()
     return f"KOS-{date_part}-{unique_part}"
 

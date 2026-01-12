@@ -21,6 +21,8 @@ import {
   getRecommendationBadge,
   getQuestDeity,
   getQuestDifficultyLabel,
+  formatPacificDate,
+  formatPacificDateTime,
 } from "@/lib/utils";
 import {
   Loader2,
@@ -287,7 +289,7 @@ export default function ReportDetailPage() {
     yPosition += 7;
     doc.text(`Email: ${report.candidate_email}`, margin, yPosition);
     yPosition += 7;
-    doc.text(`Quest Date: ${new Date(report.generated_at).toLocaleDateString()}`, margin, yPosition);
+    doc.text(`Quest Date: ${formatPacificDate(report.generated_at)}`, margin, yPosition);
     yPosition += 7;
     const questDifficulty = getQuestDifficultyLabel(report.difficulty || "");
     doc.text(`Challenge Level: ${questDifficulty} (${getDifficultyLabel(report.difficulty || "")})`, margin, yPosition);
@@ -723,7 +725,7 @@ export default function ReportDetailPage() {
                     {report.tab_switch_timestamps.slice(0, 5).map((timestamp, i) => (
                       <p key={i} className="text-xs text-muted-foreground flex items-center gap-2">
                         <Clock className="w-3 h-3" />
-                        {new Date(timestamp).toLocaleString()}
+                        {formatPacificDateTime(timestamp)}
                       </p>
                     ))}
                     {report.tab_switch_timestamps.length > 5 && (
@@ -778,8 +780,8 @@ export default function ReportDetailPage() {
                             <span className="font-medium">{formatBreakTime(entry.duration_seconds)}</span>
                           </div>
                           <div className="text-[10px] mt-1">
-                            {new Date(entry.start).toLocaleString()}
-                            {entry.end && ` - ${new Date(entry.end).toLocaleTimeString()}`}
+                            {formatPacificDateTime(entry.start)}
+                            {entry.end && ` - ${formatPacificDateTime(entry.end).split(" at ")[1]}`}
                           </div>
                         </div>
                       ))}
