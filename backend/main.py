@@ -24,7 +24,7 @@ app = FastAPI(
     description="AI-powered engineering candidate assessment platform",
     version="1.0.0",
     lifespan=lifespan,
-    redirect_slashes=True  # Prevent 307 redirects that cause CORS issues
+    redirect_slashes=False,  # Prevent 307 redirects that cause CORS issues
 )
 
 # Configure CORS

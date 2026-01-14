@@ -10,6 +10,7 @@ from app.models import Report, Test, Question, Answer, Candidate
 from app.models.test import TestStatus
 from app.schemas.report import ReportResponse, ReportWithCandidate, BreakHistoryEntry
 from app.services.ai_service import ai_service
+from app.config.tracks import is_valid_track, get_track_name
 
 router = APIRouter()
 
@@ -19,7 +20,7 @@ _report_generation_locks: Set[int] = set()  # Set of test_ids currently generati
 _lock = asyncio.Lock()  # Protects access to _report_generation_locks
 
 
-@router.get("/", response_model=List[ReportWithCandidate])
+@router.get("", response_model=List[ReportWithCandidate])
 async def list_reports(
     skip: int = 0,
     limit: int = 100,
@@ -67,6 +68,12 @@ async def list_reports(
             test_duration_hours=report.test.candidate.test_duration_hours,
             categories=report.test.candidate.categories or [],
             difficulty=report.test.candidate.difficulty,
+            # Dual scoring fields
+            general_score=report.general_score,
+            specialization_score=report.specialization_score,
+            specialization_track=report.specialization_track,
+            specialist_recommendation=report.specialist_recommendation,
+            # Anti-cheat fields
             tab_switch_count=report.test.tab_switch_count,
             tab_switch_timestamps=report.test.tab_switch_timestamps,
             paste_attempt_count=report.test.paste_attempt_count,
@@ -144,11 +151,46 @@ async def generate_report(test_id: int, db: AsyncSession = Depends(get_db)):
             else:
                 avg_section_scores[category] = 0
 
-        # Calculate overall score
+        # Calculate overall score (legacy, still used for backward compatibility)
         if avg_section_scores:
             overall_score = sum(avg_section_scores.values()) / len(avg_section_scores)
         else:
             overall_score = 0
+
+        # ===== DUAL SCORING SYSTEM =====
+        # General categories (5 categories x 100 pts = 500 max)
+        general_categories = ["brain_teaser", "coding", "code_review", "system_design", "general_engineering"]
+
+        # Calculate general score (out of 500)
+        general_score = 0.0
+        for cat in general_categories:
+            if cat in avg_section_scores:
+                general_score += avg_section_scores[cat]  # Each is already 0-100
+
+        # Identify specialization track and calculate specialization score
+        specialization_track = test.candidate.track
+        specialization_score = 0.0
+
+        if specialization_track and is_valid_track(specialization_track):
+            # Sum specialization question scores (5 questions x 100 pts = 500 max)
+            if specialization_track in section_scores:
+                spec_scores = section_scores[specialization_track]
+                specialization_score = sum(spec_scores)  # Sum individual scores, not average
+
+        # Calculate specialist recommendation
+        general_pct = (general_score / 500.0) * 100 if general_score > 0 else 0
+        spec_pct = (specialization_score / 500.0) * 100 if specialization_score > 0 else 0
+
+        if general_pct >= 70 and spec_pct >= 70:
+            specialist_recommendation = "strong_hire"
+        elif general_pct >= 70 and spec_pct < 50:
+            specialist_recommendation = "hire"
+        elif general_pct < 50 and spec_pct >= 70:
+            specialist_recommendation = "specialist_hire"
+        elif general_pct < 50 and spec_pct < 50:
+            specialist_recommendation = "no_hire"
+        else:
+            specialist_recommendation = "consider"
 
         # Generate AI report (this is the slow part - 1-2 minutes)
         ai_report = await ai_service.generate_report(
@@ -159,7 +201,7 @@ async def generate_report(test_id: int, db: AsyncSession = Depends(get_db)):
             question_details=[q for questions in section_questions.values() for q in questions]
         )
 
-        # Create report
+        # Create report with dual scoring
         report = Report(
             test_id=test.id,
             overall_score=overall_score,
@@ -173,6 +215,11 @@ async def generate_report(test_id: int, db: AsyncSession = Depends(get_db)):
             weaknesses=ai_report.get("weaknesses", []),
             detailed_feedback=ai_report.get("detailed_feedback", ""),
             ai_summary=ai_report.get("summary", ""),
+            # Dual scoring fields
+            general_score=general_score,
+            specialization_score=specialization_score if specialization_track else None,
+            specialization_track=specialization_track,
+            specialist_recommendation=specialist_recommendation if specialization_track else None,
             generated_at=datetime.utcnow()
         )
 
@@ -231,6 +278,12 @@ async def get_report(report_id: int, db: AsyncSession = Depends(get_db)):
         test_duration_hours=report.test.candidate.test_duration_hours,
         categories=report.test.candidate.categories or [],
         difficulty=report.test.candidate.difficulty,
+        # Dual scoring fields
+        general_score=report.general_score,
+        specialization_score=report.specialization_score,
+        specialization_track=report.specialization_track,
+        specialist_recommendation=report.specialist_recommendation,
+        # Anti-cheat fields
         tab_switch_count=report.test.tab_switch_count,
         tab_switch_timestamps=report.test.tab_switch_timestamps,
         paste_attempt_count=report.test.paste_attempt_count,
@@ -299,11 +352,45 @@ async def regenerate_report(test_id: int, db: AsyncSession = Depends(get_db)):
         else:
             avg_section_scores[category] = 0
 
-    # Calculate overall score
+    # Calculate overall score (legacy, still used for backward compatibility)
     if avg_section_scores:
         overall_score = sum(avg_section_scores.values()) / len(avg_section_scores)
     else:
         overall_score = 0
+
+    # ===== DUAL SCORING SYSTEM =====
+    # General categories (5 categories x 100 pts = 500 max)
+    general_categories = ["brain_teaser", "coding", "code_review", "system_design", "general_engineering"]
+
+    # Calculate general score (out of 500)
+    general_score = 0.0
+    for cat in general_categories:
+        if cat in avg_section_scores:
+            general_score += avg_section_scores[cat]
+
+    # Identify specialization track and calculate specialization score
+    specialization_track = test.candidate.track
+    specialization_score = 0.0
+
+    if specialization_track and is_valid_track(specialization_track):
+        if specialization_track in section_scores:
+            spec_scores = section_scores[specialization_track]
+            specialization_score = sum(spec_scores)
+
+    # Calculate specialist recommendation
+    general_pct = (general_score / 500.0) * 100 if general_score > 0 else 0
+    spec_pct = (specialization_score / 500.0) * 100 if specialization_score > 0 else 0
+
+    if general_pct >= 70 and spec_pct >= 70:
+        specialist_recommendation = "strong_hire"
+    elif general_pct >= 70 and spec_pct < 50:
+        specialist_recommendation = "hire"
+    elif general_pct < 50 and spec_pct >= 70:
+        specialist_recommendation = "specialist_hire"
+    elif general_pct < 50 and spec_pct < 50:
+        specialist_recommendation = "no_hire"
+    else:
+        specialist_recommendation = "consider"
 
     # Generate AI report
     ai_report = await ai_service.generate_report(
@@ -314,7 +401,7 @@ async def regenerate_report(test_id: int, db: AsyncSession = Depends(get_db)):
         question_details=[q for questions in section_questions.values() for q in questions]
     )
 
-    # Create new report
+    # Create new report with dual scoring
     report = Report(
         test_id=test.id,
         overall_score=overall_score,
@@ -328,6 +415,11 @@ async def regenerate_report(test_id: int, db: AsyncSession = Depends(get_db)):
         weaknesses=ai_report.get("weaknesses", []),
         detailed_feedback=ai_report.get("detailed_feedback", ""),
         ai_summary=ai_report.get("summary", ""),
+        # Dual scoring fields
+        general_score=general_score,
+        specialization_score=specialization_score if specialization_track else None,
+        specialization_track=specialization_track,
+        specialist_recommendation=specialist_recommendation if specialization_track else None,
         generated_at=datetime.utcnow()
     )
 
@@ -381,6 +473,12 @@ async def get_report_by_test(test_id: int, db: AsyncSession = Depends(get_db)):
         test_duration_hours=report.test.candidate.test_duration_hours,
         categories=report.test.candidate.categories or [],
         difficulty=report.test.candidate.difficulty,
+        # Dual scoring fields
+        general_score=report.general_score,
+        specialization_score=report.specialization_score,
+        specialization_track=report.specialization_track,
+        specialist_recommendation=report.specialist_recommendation,
+        # Anti-cheat fields
         tab_switch_count=report.test.tab_switch_count,
         tab_switch_timestamps=report.test.tab_switch_timestamps,
         paste_attempt_count=report.test.paste_attempt_count,

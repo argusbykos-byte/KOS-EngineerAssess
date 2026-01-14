@@ -52,6 +52,13 @@ class Test(Base):
     disqualified_at = Column(DateTime, nullable=True)
     disqualification_reason = Column(String(500), nullable=True)
 
+    # NDA and Testing Integrity Agreement
+    nda_signed_at = Column(DateTime, nullable=True)
+    nda_signature = Column(String(255), nullable=True)  # Typed full legal name
+    nda_ip_address = Column(String(45), nullable=True)  # IPv4 or IPv6 address
+    integrity_agreed = Column(Boolean, default=False)
+    integrity_agreed_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
@@ -14,6 +15,7 @@ from app.schemas.test import (
     BreakStartResponse, BreakEndResponse, BreakHistoryEntry
 )
 from app.services.ai_service import ai_service, detect_programming_language
+from app.services.nda_service import nda_service
 
 router = APIRouter()
 
@@ -50,7 +52,7 @@ def calculate_break_time(duration_hours: int) -> tuple[int, int]:
         return (10 * 60, 10 * 60)
 
 
-@router.get("/", response_model=List[TestResponse])
+@router.get("", response_model=List[TestResponse])
 async def list_tests(
     skip: int = 0,
     limit: int = 100,
@@ -66,7 +68,7 @@ async def list_tests(
     return result.scalars().all()
 
 
-@router.post("/", response_model=TestResponse)
+@router.post("", response_model=TestResponse)
 async def create_test(test_data: TestCreate, db: AsyncSession = Depends(get_db)):
     """Create a new test for a candidate and generate questions."""
     candidate_id = test_data.candidate_id
@@ -169,6 +171,43 @@ async def create_test(test_data: TestCreate, db: AsyncSession = Depends(get_db))
                     test_id=test.id,
                     category=category,
                     section_order=section_order,
+                    question_order=q_order,
+                    question_text=question_text,
+                    question_code=question_code,
+                    expected_answer=q_data.get("expected_answer"),
+                    hints=q_data.get("hints"),
+                    max_score=100,
+                    language=language
+                )
+                db.add(question)
+                created_questions.append(question)
+
+        # STEP 1.5: Generate specialization questions if candidate has a track
+        if candidate.track:
+            specialization_questions = await ai_service.generate_specialization_questions(
+                track_id=candidate.track,
+                difficulty=candidate.difficulty
+            )
+
+            # Add specialization questions with track as category
+            specialization_section_order = len(sections)  # After all other sections
+            for q_order, q_data in enumerate(specialization_questions):
+                question_text = q_data.get("question_text", "")
+                question_code = q_data.get("question_code")
+
+                # Detect programming language for code-related questions
+                language = None
+                if question_code:
+                    language = detect_programming_language(
+                        text=question_text,
+                        code=question_code,
+                        category=candidate.track
+                    )
+
+                question = Question(
+                    test_id=test.id,
+                    category=candidate.track,  # Use track ID as category
+                    section_order=specialization_section_order,
                     question_order=q_order,
                     question_text=question_text,
                     question_code=question_code,
@@ -373,7 +412,11 @@ async def get_test_by_token(access_token: str, db: AsyncSession = Depends(get_db
         break_history=break_history,
         # Disqualification info
         is_disqualified=test.is_disqualified or False,
-        disqualification_reason=test.disqualification_reason
+        disqualification_reason=test.disqualification_reason,
+        # NDA and Testing Integrity Agreement info
+        nda_signature=test.nda_signature,
+        nda_signed_at=test.nda_signed_at,
+        integrity_agreed=test.integrity_agreed or False,
     )
 
 
@@ -823,3 +866,127 @@ async def reevaluate_test(test_id: int, db: AsyncSession = Depends(get_db)):
         "new_average_score": round(avg_score, 1),
         "details": results
     }
+
+
+# ============================================================================
+# NDA and Testing Integrity Agreement Endpoints
+# ============================================================================
+
+class AgreementRequest(BaseModel):
+    """Request body for signing agreement."""
+    signature: str  # Full legal name
+    integrity_agreed: bool
+    nda_agreed: bool
+
+
+def get_client_ip(request: Request) -> str:
+    """Extract client IP address from request headers."""
+    # Check for forwarded headers (when behind proxy/load balancer)
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        # X-Forwarded-For can contain multiple IPs, first one is the client
+        return forwarded.split(",")[0].strip()
+
+    # Check for real IP header
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip.strip()
+
+    # Fall back to direct client host
+    if request.client:
+        return request.client.host
+
+    return "Unknown"
+
+
+@router.post("/token/{access_token}/agreement")
+async def sign_agreement(
+    access_token: str,
+    agreement: AgreementRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """Sign NDA and Testing Integrity Agreement before starting test."""
+    result = await db.execute(select(Test).where(Test.access_token == access_token))
+    test = result.scalar_one_or_none()
+
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    # Validate signature is not empty
+    signature = agreement.signature.strip()
+    if not signature:
+        raise HTTPException(status_code=400, detail="Signature is required")
+
+    if not agreement.integrity_agreed:
+        raise HTTPException(status_code=400, detail="Testing integrity agreement is required")
+
+    if not agreement.nda_agreed:
+        raise HTTPException(status_code=400, detail="Arbitration agreement is required")
+
+    # Get client IP
+    ip_address = get_client_ip(request)
+
+    # Record the agreement
+    now = datetime.utcnow()
+    test.nda_signature = signature
+    test.nda_signed_at = now
+    test.nda_ip_address = ip_address
+    test.integrity_agreed = True
+    test.integrity_agreed_at = now
+
+    await db.commit()
+
+    return {
+        "success": True,
+        "message": "Agreement signed successfully",
+        "signed_at": now.isoformat()
+    }
+
+
+@router.get("/{test_id}/nda-pdf")
+async def download_nda_pdf(
+    test_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Download signed NDA and Testing Integrity Agreement as PDF."""
+    # Get test with candidate info
+    query = (
+        select(Test)
+        .options(selectinload(Test.candidate))
+        .where(Test.id == test_id)
+    )
+    result = await db.execute(query)
+    test = result.scalar_one_or_none()
+
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    if not test.nda_signature:
+        raise HTTPException(
+            status_code=400,
+            detail="No signed agreement found for this test"
+        )
+
+    # Generate PDF
+    pdf_bytes = await nda_service.generate_signed_agreement_pdf(
+        candidate_name=test.candidate.name,
+        signature=test.nda_signature,
+        signed_at=test.nda_signed_at or datetime.utcnow(),
+        ip_address=test.nda_ip_address or "Not recorded",
+        integrity_agreed=test.integrity_agreed or True,
+        nda_agreed=True,  # If signature exists, NDA was agreed
+    )
+
+    # Format filename
+    candidate_name_safe = test.candidate.name.replace(" ", "_")
+    date_str = (test.nda_signed_at or datetime.utcnow()).strftime("%Y%m%d")
+    filename = f"KOS_NDA_{candidate_name_safe}_{date_str}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )

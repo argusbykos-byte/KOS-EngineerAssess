@@ -11,7 +11,7 @@ from app.config.roles import (
 router = APIRouter()
 
 
-@router.get("/", response_model=Dict[str, Any])
+@router.get("", response_model=Dict[str, Any])
 async def list_roles():
     """List all available engineering roles."""
     roles = get_all_roles()

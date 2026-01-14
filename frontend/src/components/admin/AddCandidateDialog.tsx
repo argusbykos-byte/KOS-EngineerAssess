@@ -35,6 +35,19 @@ const CATEGORIES = [
   { id: "signal_processing", label: "Signal Processing" },
 ];
 
+// Specialization tracks for dual scoring system
+const SPECIALIZATION_TRACKS = [
+  { id: "", label: "(None) - No specialization track" },
+  { id: "ai_researcher", label: "AI Researcher" },
+  { id: "ai_ml_engineer", label: "AI/ML Engineer" },
+  { id: "frontend", label: "Frontend Engineer" },
+  { id: "ui_ux", label: "UI/UX Designer" },
+  { id: "cybersecurity", label: "Cybersecurity Engineer" },
+  { id: "hardware_ee", label: "PCB/EE Engineer" },
+  { id: "firmware", label: "Firmware Engineer" },
+  { id: "biomedical", label: "Biomedical Engineer" },
+];
+
 // Progress messages for candidate creation with resume
 const CANDIDATE_PROGRESS_MESSAGES = [
   "Creating candidate...",
@@ -71,6 +84,7 @@ export function AddCandidateDialog({ onCandidateAdded }: AddCandidateDialogProps
   const [email, setEmail] = useState("");
   const [duration, setDuration] = useState([2]);
   const [difficulty, setDifficulty] = useState("mid");
+  const [track, setTrack] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
   const [resume, setResume] = useState<File | null>(null);
 
@@ -168,6 +182,7 @@ export function AddCandidateDialog({ onCandidateAdded }: AddCandidateDialogProps
     setEmail("");
     setDuration([2]);
     setDifficulty("mid");
+    setTrack("");
     setCategories([]);
     setResume(null);
     setError(null);
@@ -226,6 +241,9 @@ export function AddCandidateDialog({ onCandidateAdded }: AddCandidateDialogProps
       formData.append("test_duration_hours", duration[0].toString());
       formData.append("difficulty", difficulty);
       formData.append("categories", categories.join(","));
+      if (track) {
+        formData.append("track", track);
+      }
       if (resume) {
         formData.append("resume", resume);
       }
@@ -453,6 +471,29 @@ export function AddCandidateDialog({ onCandidateAdded }: AddCandidateDialogProps
                     <SelectItem value="senior">Senior (5+ years)</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Specialization Track</Label>
+                <Select
+                  value={track || "none"}
+                  onValueChange={(v) => setTrack(v === "none" ? "" : v)}
+                  disabled={loading}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select specialization track" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SPECIALIZATION_TRACKS.map((t) => (
+                      <SelectItem key={t.id || "none"} value={t.id || "none"}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Optional: Select a specialization for 5 additional expert-level questions
+                </p>
               </div>
 
               <div className="grid gap-2">

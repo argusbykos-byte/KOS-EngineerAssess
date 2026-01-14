@@ -179,7 +179,7 @@ async def verify_certificate(certificate_id: str, db: AsyncSession = Depends(get
     )
 
 
-@router.get("/", response_model=List[CertificateResponse])
+@router.get("", response_model=List[CertificateResponse])
 async def list_certificates(
     skip: int = 0,
     limit: int = 100,

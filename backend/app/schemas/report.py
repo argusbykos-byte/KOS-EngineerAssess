@@ -24,6 +24,12 @@ class ReportResponse(BaseModel):
     detailed_feedback: Optional[str] = None
     ai_summary: Optional[str] = None
 
+    # Dual scoring system (Phase 3)
+    general_score: Optional[float] = None  # Out of 500
+    specialization_score: Optional[float] = None  # Out of 500
+    specialization_track: Optional[str] = None  # Track ID
+    specialist_recommendation: Optional[str] = None  # strong_hire, hire, specialist_hire, consider, no_hire
+
     generated_at: datetime
 
     class Config:

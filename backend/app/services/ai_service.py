@@ -913,6 +913,100 @@ Return ONLY the JSON array, no other text."""
 
         return questions_by_category
 
+    async def generate_specialization_questions(
+        self,
+        track_id: str,
+        difficulty: str
+    ) -> List[Dict[str, Any]]:
+        """Generate 5 expert-level specialization questions for a track.
+
+        Args:
+            track_id: The specialization track ID (e.g., "ai_researcher", "firmware")
+            difficulty: The difficulty level (junior, mid, senior)
+
+        Returns:
+            List of 5 question dictionaries
+        """
+        from app.config.tracks import get_track_config, get_track_name, get_track_topics
+
+        track_config = get_track_config(track_id)
+        if not track_config:
+            print(f"[AIService] Unknown track: {track_id}, skipping specialization questions")
+            return []
+
+        track_name = get_track_name(track_id)
+        question_topics = get_track_topics(track_id)
+
+        difficulty_guidance = {
+            "junior": "Entry-level questions suitable for 0-2 years experience. Focus on fundamentals.",
+            "mid": "Intermediate questions for 2-5 years experience. Include some complexity.",
+            "senior": "Advanced questions for 5+ years experience. Focus on deep expertise and edge cases."
+        }
+
+        messages = [
+            {
+                "role": "system",
+                "content": f"""You are an expert technical interviewer creating assessment questions for KOS AI.
+
+Generate 5 expert-level {track_name} questions for a technical assessment.
+
+Track: {track_name}
+Description: {track_config.get('description', '')}
+Topics to cover: {', '.join(question_topics)}
+Difficulty: {difficulty_guidance.get(difficulty, difficulty_guidance['mid'])}
+
+Each question should test deep expertise in {track_name}. The questions should be:
+- Specific to the {track_name} domain
+- Challenging enough to differentiate specialists from generalists
+- Cover different aspects from the topics list
+- Include real-world scenarios when possible
+
+Return a JSON array of 5 question objects with this structure:
+{{
+  "question_text": "The question prompt",
+  "question_code": "Code snippet if applicable, null otherwise",
+  "expected_answer": "Brief description of expected answer or solution approach",
+  "hints": ["Hint 1", "Hint 2"],
+  "max_score": 100
+}}
+
+Return ONLY the JSON array, no other text."""
+            },
+            {
+                "role": "user",
+                "content": f"Generate 5 expert-level {track_name} questions covering: {', '.join(question_topics)}"
+            }
+        ]
+
+        response = await self._call_kimi_with_retry(messages, temperature=0.7)
+
+        if not response:
+            print(f"[AIService] Failed to generate specialization questions for {track_id}")
+            return []
+
+        try:
+            questions = json.loads(response)
+            if isinstance(questions, list) and len(questions) > 0:
+                # Ensure each question has max_score of 100
+                for q in questions:
+                    q["max_score"] = 100
+                return questions[:5]  # Limit to 5 questions
+        except json.JSONDecodeError:
+            # Try to extract JSON array from response
+            match = re.search(r'\[.*\]', response, re.DOTALL)
+            if match:
+                try:
+                    questions = json.loads(match.group())
+                    if isinstance(questions, list) and len(questions) > 0:
+                        for q in questions:
+                            q["max_score"] = 100
+                        return questions[:5]
+                except:
+                    pass
+
+        print(f"[AIService] Failed to parse specialization questions for {track_id}")
+        return []
+
     async def evaluate_answer(
         self,
         question_text: str,

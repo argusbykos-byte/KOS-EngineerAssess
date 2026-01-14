@@ -25,7 +25,7 @@ router = APIRouter()
 
 # ============== Competition CRUD Endpoints ==============
 
-@router.post("/", response_model=CompetitionResponse)
+@router.post("", response_model=CompetitionResponse)
 async def create_competition(
     competition_data: CompetitionCreate,
     db: AsyncSession = Depends(get_db)
@@ -67,7 +67,7 @@ async def create_competition(
     )
 
 
-@router.get("/", response_model=List[CompetitionResponse])
+@router.get("", response_model=List[CompetitionResponse])
 async def list_competitions(
     skip: int = 0,
     limit: int = 20,

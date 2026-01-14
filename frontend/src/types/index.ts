@@ -32,6 +32,10 @@ export interface Test {
   status: string;
   current_section: string | null;
   created_at: string;
+  // NDA and Testing Integrity Agreement
+  nda_signature?: string | null;
+  nda_signed_at?: string | null;
+  integrity_agreed?: boolean;
 }
 
 export interface BreakHistoryEntry {
@@ -58,6 +62,10 @@ export interface TestWithQuestions extends Test {
   // Disqualification info
   is_disqualified?: boolean;
   disqualification_reason?: string | null;
+  // NDA and Testing Integrity Agreement (inherited from Test but making it explicit)
+  nda_signature?: string | null;
+  nda_signed_at?: string | null;
+  integrity_agreed?: boolean;
 }
 
 export interface Question {
@@ -116,6 +124,11 @@ export interface Report {
   test_duration_hours?: number;
   categories?: string[];
   difficulty?: string;
+  // Dual scoring system (Phase 3)
+  general_score?: number | null;  // Out of 500
+  specialization_score?: number | null;  // Out of 500
+  specialization_track?: string | null;  // Track ID
+  specialist_recommendation?: string | null;  // strong_hire, hire, specialist_hire, consider, no_hire
   // Anti-cheat data
   tab_switch_count?: number | null;
   tab_switch_timestamps?: string[] | null;

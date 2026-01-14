@@ -30,6 +30,11 @@ class TestResponse(BaseModel):
     break_count: int = 0
     is_on_break: bool = False
 
+    # NDA and Testing Integrity Agreement info
+    nda_signature: Optional[str] = None
+    nda_signed_at: Optional[datetime] = None
+    integrity_agreed: bool = False
+
     class Config:
         from_attributes = True
 
@@ -67,6 +72,11 @@ class TestWithQuestions(TestResponse):
     # Disqualification info
     is_disqualified: bool = False
     disqualification_reason: Optional[str] = None
+
+    # NDA and Testing Integrity Agreement info
+    nda_signature: Optional[str] = None
+    nda_signed_at: Optional[datetime] = None
+    integrity_agreed: bool = False
 
 
 class BreakStartResponse(BaseModel):

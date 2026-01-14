@@ -26,6 +26,12 @@ class Report(Base):
     detailed_feedback = Column(Text, nullable=True)
     ai_summary = Column(Text, nullable=True)
 
+    # Dual scoring system (Phase 3)
+    general_score = Column(Float, nullable=True)  # Out of 500 (5 categories x 100)
+    specialization_score = Column(Float, nullable=True)  # Out of 500 (5 questions x 100)
+    specialization_track = Column(String(50), nullable=True)  # Track ID like "ai_researcher"
+    specialist_recommendation = Column(String(50), nullable=True)  # strong_hire, hire, specialist_hire, consider, no_hire
+
     generated_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships

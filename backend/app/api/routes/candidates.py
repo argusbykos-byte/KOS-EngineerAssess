@@ -18,7 +18,7 @@ _candidate_creation_locks: Set[str] = set()  # Set of emails currently being pro
 _lock = asyncio.Lock()  # Protects access to _candidate_creation_locks
 
 
-@router.get("/", response_model=List[CandidateWithTests])
+@router.get("", response_model=List[CandidateWithTests])
 async def list_candidates(
     skip: int = 0,
     limit: int = 100,
@@ -68,13 +68,14 @@ async def list_candidates(
     return response
 
 
-@router.post("/", response_model=CandidateResponse)
+@router.post("", response_model=CandidateResponse)
 async def create_candidate(
     name: str = Form(...),
     email: str = Form(...),
     test_duration_hours: int = Form(2),
     categories: str = Form(""),  # Comma-separated
     difficulty: str = Form("mid"),
+    track: Optional[str] = Form(None),  # Specialization track
     resume: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db)
 ):
@@ -106,7 +107,8 @@ async def create_candidate(
             email=email,
             test_duration_hours=test_duration_hours,
             categories=category_list,
-            difficulty=difficulty
+            difficulty=difficulty,
+            track=track if track else None  # Specialization track
         )
         db.add(candidate)
         await db.flush()

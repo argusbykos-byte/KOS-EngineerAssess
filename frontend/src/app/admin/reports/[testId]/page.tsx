@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { reportsApi, questionsApi } from "@/lib/api";
-import { Report, Question } from "@/types";
+import { reportsApi, questionsApi, testsApi } from "@/lib/api";
+import { Report, Question, Test } from "@/types";
 import {
   Card,
   CardContent,
@@ -21,7 +21,6 @@ import {
   getRecommendationBadge,
   getQuestDeity,
   getQuestDifficultyLabel,
-  formatPacificDate,
   formatPacificDateTime,
 } from "@/lib/utils";
 import {
@@ -38,6 +37,8 @@ import {
   Award,
   Briefcase,
   Target,
+  FileText,
+  Sparkles,
 } from "lucide-react";
 import {
   SkillRadarChart,
@@ -84,6 +85,9 @@ export default function ReportDetailPage() {
   const [hasCertificate, setHasCertificate] = useState(false);
   const [roleFitData, setRoleFitData] = useState<RoleFitData | null>(null);
   const [roleFitLoading, setRoleFitLoading] = useState(false);
+  const [hasNdaSigned, setHasNdaSigned] = useState(false);
+  const [ndaDownloading, setNdaDownloading] = useState(false);
+  const [testData, setTestData] = useState<Test | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -101,6 +105,15 @@ export default function ReportDetailPage() {
           setHasCertificate(certRes.data.has_pdf);
         } catch {
           setHasCertificate(false);
+        }
+
+        // Fetch test data for NDA check and start/end times
+        try {
+          const testRes = await testsApi.get(testId);
+          setTestData(testRes.data);
+          setHasNdaSigned(!!testRes.data.nda_signature);
+        } catch {
+          setHasNdaSigned(false);
         }
 
         // Fetch role fit recommendations
@@ -160,10 +173,78 @@ export default function ReportDetailPage() {
     }
   };
 
+  const handleDownloadNda = async () => {
+    if (!report) return;
+    setNdaDownloading(true);
+    try {
+      const response = await testsApi.downloadNdaPdf(testId);
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      const date = new Date().toISOString().split("T")[0].replace(/-/g, "");
+      link.setAttribute("download", `KOS_NDA_${report.candidate_name?.replace(/\s+/g, "_")}_${date}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error downloading NDA:", error);
+      alert("Failed to download signed NDA");
+    } finally {
+      setNdaDownloading(false);
+    }
+  };
+
   const formatBreakTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}m ${secs}s`;
+  };
+
+  // Specialization track names
+  const TRACK_NAMES: Record<string, string> = {
+    ai_researcher: "AI Researcher",
+    ai_ml_engineer: "AI/ML Engineer",
+    frontend: "Frontend Engineer",
+    ui_ux: "UI/UX Designer",
+    cybersecurity: "Cybersecurity Engineer",
+    hardware_ee: "PCB/EE Engineer",
+    firmware: "Firmware Engineer",
+    biomedical: "Biomedical Engineer",
+  };
+
+  const getTrackName = (trackId: string | null | undefined) => {
+    if (!trackId) return "";
+    return TRACK_NAMES[trackId] || trackId;
+  };
+
+  const getStarRating = (percentage: number) => {
+    if (percentage >= 90) return { stars: 5, label: "Exceptional" };
+    if (percentage >= 70) return { stars: 4, label: "Strong" };
+    if (percentage >= 50) return { stars: 3, label: "Proficient" };
+    if (percentage >= 30) return { stars: 2, label: "Developing" };
+    return { stars: 1, label: "Needs Growth" };
+  };
+
+  const renderStars = (count: number) => {
+    return "".padStart(count, "\u2B50");
+  };
+
+  const getSpecialistRecommendationBadge = (rec: string | null | undefined) => {
+    switch (rec) {
+      case "strong_hire":
+        return { label: "STRONG HIRE", className: "bg-green-500/20 text-green-500 border-green-500/30" };
+      case "hire":
+        return { label: "HIRE", className: "bg-blue-500/20 text-blue-500 border-blue-500/30" };
+      case "specialist_hire":
+        return { label: "SPECIALIST HIRE", className: "bg-purple-500/20 text-purple-500 border-purple-500/30" };
+      case "consider":
+        return { label: "CONSIDER", className: "bg-yellow-500/20 text-yellow-500 border-yellow-500/30" };
+      case "no_hire":
+        return { label: "NO HIRE", className: "bg-red-500/20 text-red-500 border-red-500/30" };
+      default:
+        return { label: "N/A", className: "bg-gray-500/20 text-gray-500 border-gray-500/30" };
+    }
   };
 
   if (loading) {
@@ -289,8 +370,42 @@ export default function ReportDetailPage() {
     yPosition += 7;
     doc.text(`Email: ${report.candidate_email}`, margin, yPosition);
     yPosition += 7;
-    doc.text(`Quest Date: ${formatPacificDate(report.generated_at)}`, margin, yPosition);
+
+    // Quest Date with Palo Alto timezone - use TEST start time, not report generation time
+    // Use test start_time for the date (when the assessment was taken)
+    const testStartDate = testData?.start_time || report.generated_at;
+    const questDate = new Date(testStartDate).toLocaleDateString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    doc.text(`Quest Date: ${questDate} | Palo Alto, CA`, margin, yPosition);
     yPosition += 7;
+
+    // Start and end times in Pacific timezone
+    const startTime = testData?.start_time ? new Date(testData.start_time).toLocaleTimeString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    }) : 'N/A';
+    const endTime = testData?.end_time ? new Date(testData.end_time).toLocaleTimeString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    }) : 'N/A';
+
+    // Determine timezone abbreviation (PST or PDT based on date)
+    const tzAbbr = new Date(testStartDate).toLocaleTimeString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      timeZoneName: 'short'
+    }).split(' ').pop() || 'PT';
+
+    doc.text(`Started: ${startTime} ${tzAbbr} | Completed: ${endTime} ${tzAbbr}`, margin, yPosition);
+    yPosition += 7;
+
     const questDifficulty = getQuestDifficultyLabel(report.difficulty || "");
     doc.text(`Challenge Level: ${questDifficulty} (${getDifficultyLabel(report.difficulty || "")})`, margin, yPosition);
     yPosition += 15;
@@ -359,6 +474,71 @@ export default function ReportDetailPage() {
     });
 
     yPosition += 10;
+
+    // Dual Scoring Section - Always show
+    {
+      checkPageBreak(70);
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 27, 75);
+      doc.text("Dual Scoring Assessment", margin, yPosition);
+      doc.setTextColor(0, 0, 0);
+      yPosition += 12;
+
+      // General Assessment Box
+      doc.setFillColor(240, 245, 255);
+      doc.rect(margin, yPosition - 5, (pageWidth - 2 * margin) / 2 - 5, 50, "F");
+
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(59, 130, 246);
+      doc.text("General Assessment", margin + 5, yPosition + 5);
+
+      doc.setFontSize(20);
+      doc.text(`${(report.general_score ?? 0).toFixed(0)} / 500`, margin + 5, yPosition + 22);
+
+      const generalPct = ((report.general_score || 0) / 500) * 100;
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(100, 100, 100);
+      doc.text(`(${generalPct.toFixed(0)}%)`, margin + 65, yPosition + 22);
+
+      // Specialization Assessment Box (if applicable)
+      if (report.specialization_track) {
+        const specBoxX = margin + (pageWidth - 2 * margin) / 2 + 5;
+        doc.setFillColor(250, 245, 255);
+        doc.rect(specBoxX, yPosition - 5, (pageWidth - 2 * margin) / 2 - 5, 50, "F");
+
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(147, 51, 234);
+        doc.text(`Specialization: ${TRACK_NAMES[report.specialization_track] || report.specialization_track}`, specBoxX + 5, yPosition + 5);
+
+        doc.setFontSize(20);
+        doc.text(`${report.specialization_score?.toFixed(0) || 0} / 500`, specBoxX + 5, yPosition + 22);
+
+        const specPct = ((report.specialization_score || 0) / 500) * 100;
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(100, 100, 100);
+        doc.text(`(${specPct.toFixed(0)}%)`, specBoxX + 65, yPosition + 22);
+
+        // Star rating
+        const starRating = getStarRating(specPct);
+        doc.text(`${"★".repeat(starRating.stars)}${"☆".repeat(5 - starRating.stars)} ${starRating.label}`, specBoxX + 5, yPosition + 35);
+
+        // Specialist recommendation
+        if (report.specialist_recommendation) {
+          const specRecBadge = getSpecialistRecommendationBadge(report.specialist_recommendation);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(147, 51, 234);
+          doc.text(`Recommendation: ${specRecBadge.label}`, specBoxX + 5, yPosition + 45);
+        }
+      }
+
+      doc.setTextColor(0, 0, 0);
+      yPosition += 60;
+    }
 
     // AI Summary
     if (report.ai_summary) {
@@ -525,11 +705,44 @@ export default function ReportDetailPage() {
     { name: "Asclepius' Arts", deity: "Asclepius", score: report.signal_processing_score, key: "signal_processing" },
   ].filter((s) => s.score !== null);
 
+  // Define preferred category order for consistent display
+  const CATEGORY_ORDER = [
+    "general_engineering",
+    "brain_teaser",
+    "coding",
+    "code_review",
+    "system_design",
+    "signal_processing",
+    // Specialization tracks
+    "ai_researcher",
+    "ai_ml_engineer",
+    "frontend",
+    "ui_ux",
+    "cybersecurity",
+    "hardware_ee",
+    "firmware",
+    "biomedical",
+  ];
+
   const questionsByCategory = questions.reduce((acc, q) => {
     if (!acc[q.category]) acc[q.category] = [];
     acc[q.category].push(q);
     return acc;
   }, {} as Record<string, Question[]>);
+
+  // Get sorted category keys based on preferred order
+  const sortedCategories = Object.keys(questionsByCategory).sort((a, b) => {
+    const indexA = CATEGORY_ORDER.indexOf(a);
+    const indexB = CATEGORY_ORDER.indexOf(b);
+    // If category not in order list, put it at the end
+    if (indexA === -1 && indexB === -1) return a.localeCompare(b);
+    if (indexA === -1) return 1;
+    if (indexB === -1) return -1;
+    return indexA - indexB;
+  });
+
+  // Default to first category or empty string if no questions
+  const defaultCategory = sortedCategories[0] || "";
 
   return (
     <div className="space-y-6">
@@ -574,6 +787,21 @@ export default function ReportDetailPage() {
                 <Award className="w-4 h-4" />
               )}
               Generate Certificate
+            </Button>
+          )}
+          {hasNdaSigned && (
+            <Button
+              variant="outline"
+              onClick={handleDownloadNda}
+              disabled={ndaDownloading}
+              className="gap-2"
+            >
+              {ndaDownloading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <FileText className="w-4 h-4" />
+              )}
+              Download Signed NDA
             </Button>
           )}
           <Button onClick={generatePDF} className="gap-2">
@@ -639,6 +867,82 @@ export default function ReportDetailPage() {
                 </p>
               </div>
             )}
+
+            {/* Dual Scoring Section - Always visible */}
+            <div className="grid gap-4 md:grid-cols-2 pt-4 border-t">
+                {/* General Assessment */}
+                <div className="p-4 rounded-lg border bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+                  <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                    <Target className="w-5 h-5 text-blue-500" />
+                    General Assessment
+                  </h3>
+                  <div className="space-y-2">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-bold text-blue-600">
+                        {(report.general_score ?? 0).toFixed(0)}
+                      </span>
+                      <span className="text-lg text-muted-foreground">/ 500</span>
+                      <span className={`text-sm font-medium ml-2 ${getScoreColor(((report.general_score ?? 0) / 500) * 100)}`}>
+                        ({(((report.general_score ?? 0) / 500) * 100).toFixed(0)}%)
+                      </span>
+                    </div>
+                    <div className="space-y-1.5 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Brain Teaser</span>
+                        <span>{report.brain_teaser_score?.toFixed(0) || 0}/100</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Coding</span>
+                        <span>{report.coding_score?.toFixed(0) || 0}/100</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Code Review</span>
+                        <span>{report.code_review_score?.toFixed(0) || 0}/100</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">System Design</span>
+                        <span>{report.system_design_score?.toFixed(0) || 0}/100</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Specialization Assessment */}
+                {report.specialization_track && (
+                  <div className="p-4 rounded-lg border bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-900/30 dark:to-indigo-900/30">
+                    <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-purple-500" />
+                      Specialization: {getTrackName(report.specialization_track)}
+                    </h3>
+                    <div className="space-y-3">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-bold text-purple-600">
+                          {report.specialization_score?.toFixed(0) || 0}
+                        </span>
+                        <span className="text-lg text-muted-foreground">/ 500</span>
+                        <span className={`text-sm font-medium ml-2 ${getScoreColor(((report.specialization_score || 0) / 500) * 100)}`}>
+                          ({(((report.specialization_score || 0) / 500) * 100).toFixed(0)}%)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">
+                          {renderStars(getStarRating(((report.specialization_score || 0) / 500) * 100).stars)}
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          {getStarRating(((report.specialization_score || 0) / 500) * 100).label}
+                        </span>
+                      </div>
+                      {report.specialist_recommendation && (
+                        <div className="pt-2">
+                          <Badge className={`${getSpecialistRecommendationBadge(report.specialist_recommendation).className} border`}>
+                            {getSpecialistRecommendationBadge(report.specialist_recommendation).label}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
           </CardContent>
         </Card>
 
@@ -903,16 +1207,23 @@ export default function ReportDetailPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue={Object.keys(questionsByCategory)[0]}>
-            <TabsList className="mb-4">
-              {Object.keys(questionsByCategory).map((category) => (
+          {sortedCategories.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No questions found for this assessment.
+            </p>
+          ) : (
+          <Tabs defaultValue={defaultCategory} key={defaultCategory}>
+            <TabsList className="mb-4 flex-wrap">
+              {sortedCategories.map((category) => (
                 <TabsTrigger key={category} value={category}>
                   {getCategoryLabel(category)}
                 </TabsTrigger>
               ))}
             </TabsList>
 
-            {Object.entries(questionsByCategory).map(([category, qs]) => (
+            {sortedCategories.map((category) => {
+              const qs = questionsByCategory[category] || [];
+              return (
               <TabsContent key={category} value={category} className="space-y-4">
                 {qs.map((question, i) => (
                   <div
@@ -1002,8 +1313,10 @@ export default function ReportDetailPage() {
                   </div>
                 ))}
               </TabsContent>
-            ))}
+              );
+            })}
           </Tabs>
+          )}
         </CardContent>
       </Card>
     </div>

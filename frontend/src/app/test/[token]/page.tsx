@@ -65,8 +65,9 @@ import {
   AntiCheatWarningModal,
   DisqualificationModal,
 } from "@/components/test/AntiCheatWarningModal";
+import { AgreementScreen } from "@/components/test/AgreementScreen";
 
-type ViewState = "loading" | "welcome" | "test" | "completed" | "expired" | "error";
+type ViewState = "loading" | "welcome" | "agreement" | "test" | "completed" | "expired" | "error";
 
 // localStorage keys for test state persistence
 const TEST_STATE_KEY_PREFIX = "kos_test_state_";
@@ -321,7 +322,12 @@ export default function TestPage() {
       setMaxSingleBreak(response.data.max_single_break_seconds || 1200);
 
       if (response.data.status === "pending") {
-        setViewState("welcome");
+        // Check if NDA is signed, if not show agreement screen first
+        if (!response.data.nda_signature) {
+          setViewState("agreement");
+        } else {
+          setViewState("welcome");
+        }
       } else if (response.data.status === "in_progress") {
         setViewState("test");
         const sections = Object.keys(response.data.questions_by_section);
@@ -800,6 +806,20 @@ export default function TestPage() {
           </CardContent>
         </Card>
       </div>
+    );
+  }
+
+  // Agreement Screen - shown before welcome when NDA not signed
+  if (viewState === "agreement" && test) {
+    return (
+      <AgreementScreen
+        candidateName={test.candidate_name}
+        testToken={token}
+        onComplete={() => {
+          // Refresh test data to get updated NDA status
+          fetchTest();
+        }}
+      />
     );
   }
 
