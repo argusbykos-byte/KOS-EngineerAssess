@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  allowedDevOrigins: ['10.40.0.7', 'localhost', '127.0.0.1'],
+  allowedDevOrigins: ['http://10.40.0.53:3000'],
 };
 
 module.exports = nextConfig;

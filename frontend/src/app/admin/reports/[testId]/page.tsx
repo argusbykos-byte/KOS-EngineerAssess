@@ -371,10 +371,19 @@ export default function ReportDetailPage() {
     doc.text(`Email: ${report.candidate_email}`, margin, yPosition);
     yPosition += 7;
 
+    // Helper to parse database UTC timestamps correctly
+    // Database stores UTC times without timezone indicator (e.g., "2026-01-13 18:19:34")
+    // We must convert to ISO format with Z suffix for proper UTC parsing
+    const parseAsUTC = (dateStr: string | null | undefined): Date | null => {
+      if (!dateStr) return null;
+      const isoStr = dateStr.includes('T') ? dateStr : dateStr.replace(' ', 'T');
+      return new Date(isoStr.endsWith('Z') ? isoStr : isoStr + 'Z');
+    };
+
     // Quest Date with Palo Alto timezone - use TEST start time, not report generation time
-    // Use test start_time for the date (when the assessment was taken)
-    const testStartDate = testData?.start_time || report.generated_at;
-    const questDate = new Date(testStartDate).toLocaleDateString('en-US', {
+    const testStartDateStr = testData?.start_time || report.generated_at;
+    const testStartDateParsed = parseAsUTC(testStartDateStr) || new Date();
+    const questDate = testStartDateParsed.toLocaleDateString('en-US', {
       timeZone: 'America/Los_Angeles',
       year: 'numeric',
       month: 'long',
@@ -384,13 +393,16 @@ export default function ReportDetailPage() {
     yPosition += 7;
 
     // Start and end times in Pacific timezone
-    const startTime = testData?.start_time ? new Date(testData.start_time).toLocaleTimeString('en-US', {
+    const startDate = parseAsUTC(testData?.start_time);
+    const endDate = parseAsUTC(testData?.end_time);
+
+    const startTime = startDate ? startDate.toLocaleTimeString('en-US', {
       timeZone: 'America/Los_Angeles',
       hour: 'numeric',
       minute: '2-digit',
       hour12: true
     }) : 'N/A';
-    const endTime = testData?.end_time ? new Date(testData.end_time).toLocaleTimeString('en-US', {
+    const endTime = endDate ? endDate.toLocaleTimeString('en-US', {
       timeZone: 'America/Los_Angeles',
       hour: 'numeric',
       minute: '2-digit',
@@ -398,7 +410,7 @@ export default function ReportDetailPage() {
     }) : 'N/A';
 
     // Determine timezone abbreviation (PST or PDT based on date)
-    const tzAbbr = new Date(testStartDate).toLocaleTimeString('en-US', {
+    const tzAbbr = testStartDateParsed.toLocaleTimeString('en-US', {
       timeZone: 'America/Los_Angeles',
       timeZoneName: 'short'
     }).split(' ').pop() || 'PT';

@@ -2189,6 +2189,170 @@ Provide a role fit recommendation."""
             "ai_recommendation": ai_recommendation,
         }
 
+    async def analyze_application(
+        self,
+        name: str,
+        email: str,
+        self_description: str,
+        overall_self_rating: int,
+        motivation: str,
+        unique_trait: str,
+        resume_text: str,
+        skill_assessments: List[Dict[str, any]],
+    ) -> Dict[str, any]:
+        """
+        Analyze a job application using Kimi2.
+
+        Analyzes resume and skill self-assessments to provide:
+        - Best position fit and score
+        - Skill verification (self-rating vs resume evidence)
+        - Strengths and areas for growth
+        - Interview questions
+        """
+        print(f"[AIService] Analyzing application for {name}")
+
+        # Format skill assessments for the prompt
+        skills_by_category = {}
+        for skill in skill_assessments:
+            category = skill.get("category", "other")
+            if category not in skills_by_category:
+                skills_by_category[category] = []
+            skills_by_category[category].append({
+                "name": skill.get("skill_name", "Unknown"),
+                "rating": skill.get("self_rating", 0)
+            })
+
+        formatted_skills = ""
+        for category, skills in skills_by_category.items():
+            formatted_skills += f"\n{category.upper()}:\n"
+            for skill in skills:
+                formatted_skills += f"  - {skill['name']}: {skill['rating']}/10\n"
+
+        # Build the prompt
+        system_message = """You are an expert technical recruiter analyzing a job application for KOS Inc., a medical technology company developing non-invasive glucose monitoring using PPG (photoplethysmography) sensors.
+
+Your task is to analyze the candidate's profile and provide a comprehensive assessment.
+
+AVAILABLE POSITIONS AT KOS:
+1. ML Engineer - Focus on machine learning, deep learning, model optimization for medical signals
+2. AI Researcher - Focus on novel algorithms, research, publications in AI/ML
+3. Embedded Systems Engineer - Focus on firmware, hardware integration, signal processing
+4. Biomedical Engineer - Focus on medical devices, regulatory compliance, clinical validation
+5. Full-Stack Developer - Focus on web/mobile apps, APIs, databases, cloud infrastructure
+6. Data Scientist - Focus on data analysis, statistics, visualization, insights
+
+EVALUATION CRITERIA:
+- Technical skills alignment with position requirements
+- Evidence from resume supporting self-rated skills
+- Potential for growth and learning
+- Fit with KOS's biomedical/ML focus
+
+Return your analysis as a JSON object with this EXACT structure:
+{
+    "best_position": "Position Name",
+    "fit_score": 75,
+    "skill_verification": [
+        {
+            "skill": "Python",
+            "self_rating": 9,
+            "resume_evidence": "strong",
+            "adjusted_rating": 8,
+            "notes": "Extensive Python experience mentioned with specific projects"
+        }
+    ],
+    "strengths": ["Strength 1", "Strength 2", "Strength 3"],
+    "areas_for_growth": ["Area 1", "Area 2"],
+    "overall_assessment": "2-3 sentence summary of the candidate",
+    "interview_questions": ["Question 1?", "Question 2?", "Question 3?"]
+}
+
+Where:
+- resume_evidence is one of: "strong", "moderate", "weak", "none"
+- fit_score is 0-100
+- Include 3-5 skills in skill_verification (prioritize highest self-rated)
+- Include 3-5 strengths
+- Include 2-3 areas for growth
+- Include 3 specific technical interview questions
+
+Return ONLY the JSON object, no other text."""
+
+        user_message = f"""CANDIDATE INFORMATION:
+Name: {name}
+Email: {email}
+Self-described role: {self_description or 'Not specified'}
+Overall self-rating: {overall_self_rating or 'Not specified'}/100
+Motivation: {motivation or 'Not provided'}
+What makes them unique: {unique_trait or 'Not provided'}
+
+RESUME:
+{resume_text or 'No resume text available'}
+
+SKILL SELF-ASSESSMENTS (1-10 scale):
+{formatted_skills if formatted_skills.strip() else 'No skills assessed yet'}
+
+Please analyze this candidate and provide your assessment as JSON."""
+
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message}
+        ]
+
+        # Call Kimi2
+        response = await self._call_kimi_with_retry(messages, temperature=0.3)
+
+        if not response:
+            print("[AIService] Empty response from Kimi2 for application analysis")
+            return self._get_default_analysis()
+
+        # Parse the response
+        try:
+            analysis = json.loads(response)
+            print(f"[AIService] Successfully parsed application analysis")
+            return self._validate_analysis(analysis)
+        except json.JSONDecodeError:
+            # Try to extract JSON from the response
+            match = re.search(r'\{.*\}', response, re.DOTALL)
+            if match:
+                try:
+                    analysis = json.loads(match.group())
+                    print(f"[AIService] Extracted and parsed application analysis from response")
+                    return self._validate_analysis(analysis)
+                except json.JSONDecodeError:
+                    pass
+
+            print(f"[AIService] Failed to parse application analysis, using defaults")
+            return self._get_default_analysis()
+
+    def _validate_analysis(self, analysis: Dict[str, any]) -> Dict[str, any]:
+        """Validate and fill in missing fields in the analysis."""
+        defaults = self._get_default_analysis()
+
+        return {
+            "best_position": analysis.get("best_position", defaults["best_position"]),
+            "fit_score": min(100, max(0, int(analysis.get("fit_score", defaults["fit_score"])))),
+            "skill_verification": analysis.get("skill_verification", defaults["skill_verification"]),
+            "strengths": analysis.get("strengths", defaults["strengths"]),
+            "areas_for_growth": analysis.get("areas_for_growth", defaults["areas_for_growth"]),
+            "overall_assessment": analysis.get("overall_assessment", defaults["overall_assessment"]),
+            "interview_questions": analysis.get("interview_questions", defaults["interview_questions"]),
+        }
+
+    def _get_default_analysis(self) -> Dict[str, any]:
+        """Return a default analysis structure when AI fails."""
+        return {
+            "best_position": "ML Engineer",
+            "fit_score": 50,
+            "skill_verification": [],
+            "strengths": ["Unable to analyze - please review manually"],
+            "areas_for_growth": ["Unable to analyze - please review manually"],
+            "overall_assessment": "AI analysis could not be completed. Please review the application manually.",
+            "interview_questions": [
+                "Tell me about your most challenging technical project.",
+                "How do you approach learning new technologies?",
+                "What interests you about working in medical technology?"
+            ],
+        }
+
     async def close(self):
         await self.client.aclose()
 
