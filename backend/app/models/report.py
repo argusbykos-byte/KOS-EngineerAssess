@@ -19,6 +19,7 @@ class Report(Base):
     code_review_score = Column(Float, nullable=True)
     system_design_score = Column(Float, nullable=True)
     signal_processing_score = Column(Float, nullable=True)
+    general_engineering_score = Column(Float, nullable=True)
 
     # Detailed analysis
     strengths = Column(JSON, nullable=True)

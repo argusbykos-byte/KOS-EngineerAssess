@@ -3,6 +3,7 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
+from sqlalchemy.orm.attributes import flag_modified
 from typing import List, Dict, Set
 from datetime import datetime, timedelta
 import secrets
@@ -287,6 +288,84 @@ async def delete_test(test_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
 
     return {"success": True, "message": f"Test {test_id} and all associated data deleted"}
+
+
+@router.post("/{test_id}/reset-tab-switches")
+async def reset_tab_switches(test_id: int, db: AsyncSession = Depends(get_db)):
+    """Reset tab switch count for a test (admin endpoint).
+
+    Allows admins to give candidates another chance after tab switch violations.
+    Only works for tests that are in_progress.
+    """
+    try:
+        result = await db.execute(select(Test).where(Test.id == test_id))
+        test = result.scalar_one_or_none()
+
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+
+        if test.status != "in_progress":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Can only reset tab switches for in_progress tests. Current status: {test.status}"
+            )
+
+        previous_count = test.tab_switch_count or 0
+        test.tab_switch_count = 0
+        test.tab_switch_timestamps = []
+        flag_modified(test, "tab_switch_timestamps")  # Mark JSON field as modified
+        test.warning_count = max(0, (test.warning_count or 0) - previous_count)
+
+        await db.commit()
+
+        return {
+            "success": True,
+            "message": f"Reset tab switch count from {previous_count} to 0",
+            "previous_count": previous_count
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+
+@router.post("/{test_id}/reset-paste-attempts")
+async def reset_paste_attempts(test_id: int, db: AsyncSession = Depends(get_db)):
+    """Reset paste attempt count for a test (admin endpoint).
+
+    Allows admins to give candidates another chance after paste attempt violations.
+    Only works for tests that are in_progress.
+    """
+    try:
+        result = await db.execute(select(Test).where(Test.id == test_id))
+        test = result.scalar_one_or_none()
+
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+
+        if test.status != "in_progress":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Can only reset paste attempts for in_progress tests. Current status: {test.status}"
+            )
+
+        previous_count = test.paste_attempt_count or 0
+        test.paste_attempt_count = 0
+        test.warning_count = max(0, (test.warning_count or 0) - previous_count)
+
+        await db.commit()
+
+        return {
+            "success": True,
+            "message": f"Reset paste attempt count from {previous_count} to 0",
+            "previous_count": previous_count
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
 @router.get("/token/{access_token}", response_model=TestWithQuestions)

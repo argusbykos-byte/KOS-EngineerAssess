@@ -32,6 +32,7 @@ import {
   Clock,
   User,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { formatPacificDate } from "@/lib/utils";
 
@@ -105,6 +106,9 @@ export default function ApplicationsPage() {
   const [total, setTotal] = useState(0);
   const pageSize = 20;
 
+  // Delete state
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
   // Fetch applications
   const fetchApplications = async () => {
     setLoading(true);
@@ -128,6 +132,26 @@ export default function ApplicationsPage() {
       console.error("Error fetching applications:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handle delete with confirmation
+  const handleDelete = async (app: ApplicationListItem) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete the application for ${app.full_name} (${app.email})?\n\nThis action cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    setDeletingId(app.id);
+    try {
+      await applicationsApi.delete(app.id);
+      fetchApplications();
+    } catch (error) {
+      console.error("Error deleting application:", error);
+      alert("Failed to delete application. It may have been converted to a candidate.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -333,6 +357,7 @@ export default function ApplicationsPage() {
                 <TableHead>Skills</TableHead>
                 <TableHead>Fit Score</TableHead>
                 <TableHead>Applied</TableHead>
+                <TableHead className="w-[50px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -387,6 +412,24 @@ export default function ApplicationsPage() {
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {formatDate(app.created_at)}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      disabled={deletingId === app.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(app);
+                      }}
+                    >
+                      {deletingId === app.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}

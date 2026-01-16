@@ -114,6 +114,7 @@ export interface Report {
   code_review_score: number | null;
   system_design_score: number | null;
   signal_processing_score: number | null;
+  general_engineering_score: number | null;
   strengths: string[] | null;
   weaknesses: string[] | null;
   detailed_feedback: string | null;

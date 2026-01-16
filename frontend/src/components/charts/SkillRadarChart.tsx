@@ -163,6 +163,18 @@ export function ComparisonRadarChart({
   );
 }
 
+// Track ID to display name mapping
+const TRACK_DISPLAY_NAMES: Record<string, string> = {
+  ai_researcher: "AI Research",
+  ai_ml_engineer: "AI/ML",
+  frontend: "Frontend",
+  ui_ux: "UI/UX",
+  cybersecurity: "Security",
+  hardware_ee: "Hardware/EE",
+  firmware: "Firmware",
+  biomedical: "Biomedical",
+};
+
 // Helper function to generate skill data from report section scores
 export function generateSkillDataFromReport(report: {
   brain_teaser_score?: number | null;
@@ -170,9 +182,16 @@ export function generateSkillDataFromReport(report: {
   code_review_score?: number | null;
   system_design_score?: number | null;
   signal_processing_score?: number | null;
+  general_engineering_score?: number | null;
+  specialization_score?: number | null;
+  specialization_track?: string | null;
 }): SkillData[] {
   const skills: SkillData[] = [];
 
+  // Add general engineering score if available
+  if (report.general_engineering_score != null) {
+    skills.push({ skill: "General Eng.", score: report.general_engineering_score });
+  }
   if (report.brain_teaser_score != null) {
     skills.push({ skill: "Problem Solving", score: report.brain_teaser_score });
   }
@@ -187,6 +206,14 @@ export function generateSkillDataFromReport(report: {
   }
   if (report.signal_processing_score != null) {
     skills.push({ skill: "Signal Processing", score: report.signal_processing_score });
+  }
+
+  // Add specialization track score if available (convert from 500 scale to 100 scale)
+  if (report.specialization_score != null && report.specialization_track) {
+    const trackLabel = TRACK_DISPLAY_NAMES[report.specialization_track] || report.specialization_track;
+    // Specialization score is out of 500, convert to percentage
+    const normalizedScore = (report.specialization_score / 500) * 100;
+    skills.push({ skill: trackLabel, score: normalizedScore });
   }
 
   return skills;

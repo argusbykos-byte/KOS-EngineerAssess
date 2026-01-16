@@ -24,7 +24,9 @@ from app.models.application import (
     AvailabilityChoice,
     SkillCategory,
 )
-from app.models import Candidate, Test
+from app.models import Candidate, Test, Question, Answer
+from app.services.ai_service import detect_programming_language
+from app.config.tracks import SPECIALIZATION_TRACKS, get_track_config
 from app.schemas.application import (
     ApplicationCreate,
     ApplicationUpdate,
@@ -77,6 +79,187 @@ async def save_resume_file(file: UploadFile, application_id: int) -> tuple[str, 
         await f.write(content)
 
     return filepath, file.filename or "resume"
+
+
+# =============================================================================
+# HELPER FUNCTIONS FOR TEST GENERATION FROM APPLICATION
+# =============================================================================
+
+# Map self_description/suggested_position to specialization tracks
+ROLE_TO_TRACK_MAPPING = {
+    # AI/ML roles
+    "ai researcher": "ai_researcher",
+    "machine learning researcher": "ai_researcher",
+    "machine learning engineer": "ai_ml_engineer",
+    "ml engineer": "ai_ml_engineer",
+    "data scientist": "ai_ml_engineer",
+    # Engineering roles
+    "embedded systems engineer": "firmware",
+    "firmware engineer": "firmware",
+    "biomedical engineer": "biomedical",
+    "biomechanical engineer": "biomedical",
+    "biomedical / biomechanical engineer": "biomedical",
+    "electrical engineer": "hardware_ee",
+    "pcb engineer": "hardware_ee",
+    "ee engineer": "hardware_ee",
+    # Software roles
+    "software engineer": None,  # Uses default categories
+    "full-stack developer": "frontend",
+    "full stack developer": "frontend",
+    "frontend developer": "frontend",
+    "frontend engineer": "frontend",
+    "backend developer": None,
+    "backend engineer": None,
+    # Security
+    "cybersecurity engineer": "cybersecurity",
+    "security engineer": "cybersecurity",
+    # Design
+    "ui/ux designer": "ui_ux",
+    "ux designer": "ui_ux",
+    "ui designer": "ui_ux",
+    # Algorithm roles
+    "algorithm design engineer": "ai_researcher",
+    "mathematical engineer": "ai_researcher",
+}
+
+# Critical skills for KOS that should always be tested
+KOS_CRITICAL_SKILLS = [
+    "Signal Processing",
+    "Machine Learning",
+    "Deep Learning",
+    "Embedded Systems",
+    "Time Series Analysis",
+    "Python",
+    "C",
+    "C++",
+    "PyTorch",
+    "TensorFlow",
+    "Signal & Sensor Data Processing",
+    "Model Optimization & Deployment",
+    "Embedded Hardware Integration",
+]
+
+
+def map_role_to_track(role: str) -> Optional[str]:
+    """Map a role description to a specialization track ID."""
+    if not role:
+        return None
+    role_lower = role.lower().strip()
+    # Direct match
+    if role_lower in ROLE_TO_TRACK_MAPPING:
+        return ROLE_TO_TRACK_MAPPING[role_lower]
+    # Partial match
+    for role_key, track_id in ROLE_TO_TRACK_MAPPING.items():
+        if role_key in role_lower or role_lower in role_key:
+            return track_id
+    return None
+
+
+def determine_categories_from_skills(skill_assessments: List[SkillAssessment]) -> List[str]:
+    """Determine test categories based on candidate's skill self-assessments."""
+    categories = ["brain_teaser"]  # Always include
+
+    # Check skill areas
+    has_ml = False
+    has_coding = False
+    has_signal = False
+    has_embedded = False
+
+    for skill in skill_assessments:
+        if skill.self_rating is None:
+            continue
+
+        skill_name_lower = skill.skill_name.lower()
+        rating = skill.self_rating
+
+        # Only consider skills rated 5+ for category determination
+        if rating >= 5:
+            if any(kw in skill_name_lower for kw in ["machine learning", "deep learning", "pytorch", "tensorflow", "cnn", "rnn", "transformer"]):
+                has_ml = True
+            if any(kw in skill_name_lower for kw in ["python", "c++", "javascript", "typescript", "java", "c#"]):
+                has_coding = True
+            if any(kw in skill_name_lower for kw in ["signal processing", "time series", "sensor"]):
+                has_signal = True
+            if any(kw in skill_name_lower for kw in ["embedded", "firmware", "rtos"]):
+                has_embedded = True
+
+    if has_coding or has_ml:
+        categories.extend(["coding", "code_review", "system_design"])
+    if has_signal or has_embedded:
+        categories.append("signal_processing")
+
+    # Always include general_engineering for all technical candidates
+    categories.append("general_engineering")
+
+    return list(set(categories))
+
+
+def extract_skills_for_questions(skill_assessments: List[SkillAssessment]) -> tuple[List[str], List[str], List[str]]:
+    """
+    Extract skills categorized by rating for personalized question generation.
+
+    Returns:
+        (high_priority_skills, medium_priority_skills, critical_skills_to_verify)
+    """
+    high_priority = []  # Skills rated 8-10 (ask advanced verification questions)
+    medium_priority = []  # Skills rated 5-7 (ask intermediate questions)
+    critical_to_verify = []  # KOS critical skills regardless of rating
+
+    for skill in skill_assessments:
+        if skill.self_rating is None:
+            continue
+
+        skill_name = skill.skill_name
+        rating = skill.self_rating
+
+        # Check if this is a KOS critical skill
+        if any(critical.lower() in skill_name.lower() or skill_name.lower() in critical.lower()
+               for critical in KOS_CRITICAL_SKILLS):
+            critical_to_verify.append(skill_name)
+
+        # Categorize by rating
+        if rating >= 8:
+            high_priority.append(skill_name)
+        elif rating >= 5:
+            medium_priority.append(skill_name)
+        # Skills rated 1-4 are skipped or get basic questions only
+
+    return high_priority, medium_priority, critical_to_verify
+
+
+def build_skill_context_for_prompt(
+    skill_assessments: List[SkillAssessment],
+    resume_text: str,
+    self_description: str
+) -> str:
+    """Build a context string for AI prompt based on candidate's application data."""
+    context_parts = []
+
+    if self_description:
+        context_parts.append(f"Candidate identifies as: {self_description}")
+
+    # Group skills by rating level
+    high_rated = []
+    medium_rated = []
+
+    for skill in skill_assessments:
+        if skill.self_rating is None:
+            continue
+        if skill.self_rating >= 8:
+            high_rated.append(f"{skill.skill_name} ({skill.self_rating}/10)")
+        elif skill.self_rating >= 5:
+            medium_rated.append(f"{skill.skill_name} ({skill.self_rating}/10)")
+
+    if high_rated:
+        context_parts.append(f"\nHigh-rated skills (8-10): {', '.join(high_rated[:15])}")
+    if medium_rated:
+        context_parts.append(f"\nMedium-rated skills (5-7): {', '.join(medium_rated[:15])}")
+
+    if resume_text:
+        # Truncate resume for prompt context
+        context_parts.append(f"\nResume excerpt:\n{resume_text[:2000]}")
+
+    return "\n".join(context_parts)
 
 
 # =============================================================================
@@ -678,6 +861,47 @@ async def update_application(
     return await get_application_admin(application_id, db)
 
 
+@router.delete("/admin/{application_id}")
+async def delete_application(
+    application_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Delete an application and all associated data (admin endpoint).
+
+    This will cascade delete:
+    - All skill assessments for the application
+    - The uploaded resume file (if any)
+    """
+    # Get application
+    query = select(Application).where(Application.id == application_id)
+    result = await db.execute(query)
+    application = result.scalar_one_or_none()
+
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # Check if application has been converted to a candidate
+    if application.candidate_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete application that has been converted to a candidate. Delete the candidate first."
+        )
+
+    # Delete resume file if exists
+    if application.resume_path and os.path.exists(application.resume_path):
+        try:
+            os.remove(application.resume_path)
+        except Exception as e:
+            print(f"[Applications] Warning: Failed to delete resume file: {e}")
+
+    # Delete application (skill_assessments cascade deleted automatically)
+    await db.delete(application)
+    await db.commit()
+
+    return {"success": True, "message": f"Application for {application.full_name} deleted successfully"}
+
+
 @router.post("/admin/{application_id}/create-candidate", response_model=CreateCandidateResponse)
 async def create_candidate_from_application(
     application_id: int,
@@ -687,11 +911,24 @@ async def create_candidate_from_application(
     """
     Convert an application to a candidate in the existing test system.
 
-    Creates a candidate record and generates a test for them.
-    Links the application to the candidate for tracking.
+    Creates a candidate record, generates personalized questions based on:
+    - The candidate's 71 skill self-assessments
+    - Resume text and self-description
+    - KOS's needs (medical devices, PPG signal processing, ML for glucose monitoring)
+
+    Includes specialization category based on candidate's role for dual scoring.
+
+    IMPORTANT: This function generates questions FIRST (outside transaction) to avoid
+    holding database locks during the 90+ second AI generation process.
     """
-    # Get application
-    query = select(Application).where(Application.id == application_id)
+    # =========================================================================
+    # PHASE 1: Read application data (quick read, no write lock)
+    # =========================================================================
+    query = (
+        select(Application)
+        .options(selectinload(Application.skill_assessments))
+        .where(Application.id == application_id)
+    )
     result = await db.execute(query)
     application = result.scalar_one_or_none()
 
@@ -716,18 +953,141 @@ async def create_candidate_from_application(
             detail="A candidate with this email already exists"
         )
 
-    # Create candidate
+    # Extract all needed data from application BEFORE releasing db session
+    app_full_name = application.full_name
+    app_email = application.email
+    app_resume_path = application.resume_path
+    app_resume_text = application.resume_text
+    app_self_description = application.self_description
+    app_suggested_position = application.suggested_position
+    # Make a copy of skill assessments data
+    skill_assessments_copy = [
+        {
+            "skill_name": s.skill_name,
+            "self_rating": s.self_rating,
+            "category": s.category
+        }
+        for s in application.skill_assessments
+    ]
+
+    # Determine specialization track from self_description or suggested_position
+    track_id = None
+    if app_suggested_position:
+        track_id = map_role_to_track(app_suggested_position)
+    if not track_id and app_self_description:
+        track_id = map_role_to_track(app_self_description)
+
+    print(f"[Applications] Determined track: {track_id} from role: {app_suggested_position or app_self_description}")
+
+    # Determine categories based on skill assessments
+    if data.categories:
+        categories = data.categories
+    else:
+        categories = determine_categories_from_skills(application.skill_assessments)
+
+    # Extract skills for personalized question focus
+    high_priority_skills, medium_priority_skills, critical_skills = extract_skills_for_questions(
+        application.skill_assessments
+    )
+
+    # Combine skills for AI context
+    all_skills = list(set(high_priority_skills + medium_priority_skills + critical_skills))[:20]
+
+    print(f"[Applications] Categories: {categories}")
+    print(f"[Applications] High-priority skills (8-10): {high_priority_skills[:10]}")
+    print(f"[Applications] Critical skills to verify: {critical_skills[:10]}")
+
+    # Build skill context for AI prompt
+    skill_context = build_skill_context_for_prompt(
+        application.skill_assessments,
+        app_resume_text or "",
+        app_self_description or ""
+    )
+
+    # =========================================================================
+    # PHASE 2: Generate questions via AI (OUTSIDE transaction - no db lock held)
+    # This takes 90+ seconds but doesn't block other database operations
+    # =========================================================================
+    print(f"[Applications] Generating personalized questions for {app_full_name}...")
+
+    # Generate questions using AI
+    questions_data = {}
+    try:
+        questions_data = await ai_service.generate_test_questions(
+            categories=categories,
+            difficulty=data.difficulty,
+            skills=all_skills,
+            resume_text=skill_context,
+            track_id=track_id
+        )
+    except Exception as e:
+        print(f"[Applications] Error generating questions: {e}")
+
+    # Generate specialization questions if candidate has a track
+    specialization_questions = []
+    if track_id and get_track_config(track_id):
+        print(f"[Applications] Generating specialization questions for track: {track_id}")
+        try:
+            specialization_questions = await ai_service.generate_specialization_questions(
+                track_id=track_id,
+                difficulty=data.difficulty
+            )
+        except Exception as e:
+            print(f"[Applications] Error generating specialization questions: {e}")
+
+    # =========================================================================
+    # PHASE 3: Quick database transaction to insert everything
+    # This is fast (<1 second) so database lock is held briefly
+    # =========================================================================
+    print(f"[Applications] Inserting candidate and questions into database...")
+
+    # Re-check that candidate wasn't created while we were generating questions
+    existing_check = await db.execute(
+        select(Candidate).where(func.lower(Candidate.email) == app_email.lower())
+    )
+    if existing_check.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="A candidate with this email was created while generating questions"
+        )
+
+    # Re-check application wasn't already converted
+    app_check = await db.execute(
+        select(Application.candidate_id).where(Application.id == application_id)
+    )
+    app_candidate_id = app_check.scalar_one_or_none()
+    if app_candidate_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Application was already converted while generating questions"
+        )
+
+    # Create candidate with track
     candidate = Candidate(
-        name=application.full_name,
-        email=application.email,
-        resume_path=application.resume_path,
+        name=app_full_name,
+        email=app_email,
+        resume_path=app_resume_path,
+        resume_text=app_resume_text,
+        extracted_skills=all_skills,
         test_duration_hours=data.test_duration_hours,
-        categories=data.categories or [],
+        categories=categories,
         difficulty=data.difficulty,
+        track=track_id,
     )
 
     db.add(candidate)
     await db.flush()
+
+    # Calculate break time based on test duration
+    duration_hours = data.test_duration_hours
+    if duration_hours >= 8:
+        total_break = 60 * 60
+    elif duration_hours >= 4:
+        total_break = int((30 + (duration_hours - 4) * (30 / 4)) * 60)
+    elif duration_hours >= 2:
+        total_break = int((15 + (duration_hours - 2) * (15 / 2)) * 60)
+    else:
+        total_break = 10 * 60
 
     # Create test
     test = Test(
@@ -735,22 +1095,115 @@ async def create_candidate_from_application(
         access_token=secrets.token_urlsafe(32),
         status="pending",
         duration_hours=data.test_duration_hours,
-        total_break_time_seconds=data.test_duration_hours * 450,  # 7.5 min per hour
+        total_break_time_seconds=total_break,
+        used_break_time_seconds=0,
+        break_count=0,
+        break_history=[],
     )
 
     db.add(test)
     await db.flush()
 
-    # Link application to candidate
-    application.candidate_id = candidate.id
-    application.status = ApplicationStatus.TEST_GENERATED
+    # Track created questions for answer record creation
+    created_questions = []
+    sections = list(set(categories))
+
+    # Create Question records from generated questions
+    for section_order, category in enumerate(sections):
+        category_questions = questions_data.get(category, [])
+
+        if not category_questions:
+            print(f"[Applications] Warning: No questions generated for category {category}")
+            continue
+
+        for q_order, q_data in enumerate(category_questions):
+            question_text = q_data.get("question_text", "")
+            question_code = q_data.get("question_code")
+
+            if not question_text:
+                continue
+
+            # Detect programming language for code-related questions
+            language = None
+            if category in ["coding", "code_review"]:
+                language = detect_programming_language(
+                    text=question_text,
+                    code=question_code,
+                    category=category
+                )
+
+            question = Question(
+                test_id=test.id,
+                category=category,
+                section_order=section_order,
+                question_order=q_order,
+                question_text=question_text,
+                question_code=question_code,
+                expected_answer=q_data.get("expected_answer"),
+                hints=q_data.get("hints"),
+                max_score=100,
+                language=language
+            )
+            db.add(question)
+            created_questions.append(question)
+
+    # Add specialization questions with track as category
+    if specialization_questions:
+        specialization_section_order = len(sections)
+        for q_order, q_data in enumerate(specialization_questions):
+            question_text = q_data.get("question_text", "")
+            question_code = q_data.get("question_code")
+
+            if not question_text:
+                continue
+
+            # Detect programming language for code-related questions
+            language = None
+            if question_code:
+                language = detect_programming_language(
+                    text=question_text,
+                    code=question_code,
+                    category=track_id
+                )
+
+            question = Question(
+                test_id=test.id,
+                category=track_id,  # Use track ID as category for specialization scoring
+                section_order=specialization_section_order,
+                question_order=q_order,
+                question_text=question_text,
+                question_code=question_code,
+                expected_answer=q_data.get("expected_answer"),
+                hints=q_data.get("hints"),
+                max_score=100,
+                language=language
+            )
+            db.add(question)
+            created_questions.append(question)
+
+    # Flush to get question IDs assigned
+    await db.flush()
+
+    # Create Answer records for each question
+    for question in created_questions:
+        answer = Answer(question_id=question.id)
+        db.add(answer)
+
+    # Link application to candidate - need to re-fetch to update
+    app_to_update = await db.get(Application, application_id)
+    if app_to_update:
+        app_to_update.candidate_id = candidate.id
+        app_to_update.status = ApplicationStatus.TEST_GENERATED
 
     await db.commit()
+
+    question_count = len(created_questions)
+    print(f"[Applications] Created test with {question_count} personalized questions for {app_full_name}")
 
     return CreateCandidateResponse(
         success=True,
         candidate_id=candidate.id,
         test_id=test.id,
         access_token=test.access_token,
-        message=f"Successfully created candidate and test for {application.full_name}",
+        message=f"Successfully created candidate and test with {question_count} personalized questions for {app_full_name}",
     )

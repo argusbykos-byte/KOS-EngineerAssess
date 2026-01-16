@@ -72,7 +72,7 @@ class Application(Base):
     graduation_date = Column(String(50), nullable=True)  # e.g., "May 2025", "Already graduated"
     preferred_start_date = Column(String(100), nullable=True)
     availability = Column(
-        Enum(AvailabilityChoice),
+        Enum(AvailabilityChoice, values_callable=lambda x: [e.value for e in x]),
         default=AvailabilityChoice.NEED_TO_DISCUSS,
         nullable=False
     )
@@ -94,8 +94,9 @@ class Application(Base):
     application_token = Column(String(64), unique=True, nullable=False, index=True)
 
     # Status & Processing
+    # Use values_callable to store enum values (lowercase) instead of names (uppercase)
     status = Column(
-        Enum(ApplicationStatus),
+        Enum(ApplicationStatus, values_callable=lambda x: [e.value for e in x]),
         default=ApplicationStatus.PENDING,
         nullable=False,
         index=True
@@ -150,7 +151,7 @@ class SkillAssessment(Base):
     )
 
     # Skill identification
-    category = Column(Enum(SkillCategory), nullable=False)
+    category = Column(Enum(SkillCategory, values_callable=lambda x: [e.value for e in x]), nullable=False)
     skill_name = Column(String(255), nullable=False)
 
     # Ratings

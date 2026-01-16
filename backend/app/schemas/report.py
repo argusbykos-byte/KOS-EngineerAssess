@@ -18,6 +18,7 @@ class ReportResponse(BaseModel):
     code_review_score: Optional[float] = None
     system_design_score: Optional[float] = None
     signal_processing_score: Optional[float] = None
+    general_engineering_score: Optional[float] = None
 
     strengths: Optional[List[str]] = None
     weaknesses: Optional[List[str]] = None

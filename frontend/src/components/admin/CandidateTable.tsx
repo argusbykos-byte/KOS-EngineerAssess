@@ -52,6 +52,9 @@ import {
   AlertTriangle,
   Sparkles,
   Brain,
+  RotateCcw,
+  MousePointer,
+  Clipboard,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -141,6 +144,10 @@ export function CandidateTable({
   const [expandedCandidates, setExpandedCandidates] = useState<Set<number>>(new Set());
   const [showDeleteTestDialog, setShowDeleteTestDialog] = useState(false);
   const [testToDelete, setTestToDelete] = useState<{ id: number; candidateName: string } | null>(null);
+
+  // Reset integrity monitoring state
+  const [resettingTabSwitches, setResettingTabSwitches] = useState<number | null>(null);
+  const [resettingPasteAttempts, setResettingPasteAttempts] = useState<number | null>(null);
 
   // CRITICAL BUG FIX: Global operation state to prevent double-clicks and show progress
   const [isGenerating, setIsGenerating] = useState(false);
@@ -428,6 +435,34 @@ export function CandidateTable({
     setShowDeleteTestDialog(true);
   };
 
+  // Reset tab switches handler
+  const handleResetTabSwitches = async (testId: number) => {
+    setResettingTabSwitches(testId);
+    try {
+      await testsApi.resetTabSwitches(testId);
+      onRefresh();
+    } catch (error) {
+      console.error("Error resetting tab switches:", error);
+      alert("Failed to reset tab switches");
+    } finally {
+      setResettingTabSwitches(null);
+    }
+  };
+
+  // Reset paste attempts handler
+  const handleResetPasteAttempts = async (testId: number) => {
+    setResettingPasteAttempts(testId);
+    try {
+      await testsApi.resetPasteAttempts(testId);
+      onRefresh();
+    } catch (error) {
+      console.error("Error resetting paste attempts:", error);
+      alert("Failed to reset paste attempts");
+    } finally {
+      setResettingPasteAttempts(null);
+    }
+  };
+
   if (candidates.length === 0) {
     return (
       <Card>
@@ -491,6 +526,46 @@ export function CandidateTable({
                   </>
                 )}
               </Button>
+            )}
+
+            {/* Reset buttons for in_progress tests */}
+            {test.status === "in_progress" && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-amber-600 hover:text-amber-700 hover:bg-amber-50 border-amber-300"
+                  onClick={() => handleResetTabSwitches(test.id)}
+                  disabled={resettingTabSwitches === test.id}
+                  title="Reset tab switch violations"
+                >
+                  {resettingTabSwitches === test.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <MousePointer className="w-4 h-4 mr-1" />
+                      Reset Tabs
+                    </>
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 border-orange-300"
+                  onClick={() => handleResetPasteAttempts(test.id)}
+                  disabled={resettingPasteAttempts === test.id}
+                  title="Reset paste attempt violations"
+                >
+                  {resettingPasteAttempts === test.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Clipboard className="w-4 h-4 mr-1" />
+                      Reset Pastes
+                    </>
+                  )}
+                </Button>
+              </>
             )}
 
             {hasCompletedTest && !test.overall_score && (
