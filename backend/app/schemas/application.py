@@ -165,6 +165,7 @@ class ApplicationAdminResponse(ApplicationDetailResponse):
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     candidate_id: Optional[int] = None
+    test_access_token: Optional[str] = None  # Access token for the candidate's test
 
 
 class ApplicationSubmitResponse(BaseModel):

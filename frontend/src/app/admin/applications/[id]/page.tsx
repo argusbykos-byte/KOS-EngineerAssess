@@ -186,6 +186,7 @@ interface ApplicationDetail {
   reviewed_by: string | null;
   reviewed_at: string | null;
   candidate_id: number | null;
+  test_access_token: string | null;
   skill_assessments: SkillAssessment[];
 }
 
@@ -236,7 +237,7 @@ export default function ApplicationDetailPage() {
     const fetchApplication = async () => {
       try {
         const response = await applicationsApi.getAdmin(applicationId);
-        setApplication(response.data);
+        setApplication(response.data as ApplicationDetail);
         setStatus(response.data.status);
         setAdminNotes(response.data.admin_notes || "");
         setReviewedBy(response.data.reviewed_by || "");
@@ -334,7 +335,7 @@ export default function ApplicationDetailPage() {
 
       // Refresh
       const response = await applicationsApi.getAdmin(applicationId);
-      setApplication(response.data);
+      setApplication(response.data as ApplicationDetail);
     } catch (err) {
       console.error("Failed to save:", err);
     } finally {
@@ -352,7 +353,7 @@ export default function ApplicationDetailPage() {
 
       // Refresh
       const response = await applicationsApi.getAdmin(applicationId);
-      setApplication(response.data);
+      setApplication(response.data as ApplicationDetail);
     } catch (err) {
       console.error("Failed to analyze:", err);
     } finally {
@@ -460,7 +461,22 @@ export default function ApplicationDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {getStatusBadge(application.status)}
+          {application.test_access_token && (application.status === "test_generated" || application.status === "test_in_progress") ? (
+            <a
+              href={`/test/${application.test_access_token}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="cursor-pointer hover:opacity-80 transition-opacity"
+              title="Click to open test in new tab"
+            >
+              <Badge variant="outline" className={`${STATUS_CONFIG[application.status]?.className || STATUS_CONFIG.pending.className} text-sm flex items-center gap-1`}>
+                {STATUS_CONFIG[application.status]?.label || "Unknown"}
+                <ExternalLink className="w-3 h-3" />
+              </Badge>
+            </a>
+          ) : (
+            getStatusBadge(application.status)
+          )}
           {application.candidate_id && (
             <Link href="/admin/candidates">
               <Badge variant="outline" className="bg-primary/20 text-primary">

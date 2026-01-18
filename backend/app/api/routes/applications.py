@@ -773,6 +773,16 @@ async def get_application_admin(
     total_skills = sum(len(skills) for skills in SKILL_CATEGORIES.values())
     completed_skills = len([s for s in application.skill_assessments if s.self_rating is not None])
 
+    # Fetch test access token if candidate exists
+    test_access_token = None
+    if application.candidate_id:
+        test_result = await db.execute(
+            select(Test).where(Test.candidate_id == application.candidate_id).order_by(Test.created_at.desc())
+        )
+        test = test_result.scalar_one_or_none()
+        if test:
+            test_access_token = test.access_token
+
     return ApplicationAdminResponse(
         id=application.id,
         full_name=application.full_name,
@@ -804,6 +814,7 @@ async def get_application_admin(
         reviewed_by=application.reviewed_by,
         reviewed_at=application.reviewed_at,
         candidate_id=application.candidate_id,
+        test_access_token=test_access_token,
         skill_assessments=[
             SkillAssessmentResponse(
                 id=s.id,
