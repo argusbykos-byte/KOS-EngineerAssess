@@ -34,6 +34,19 @@ interface CodeEditorProps {
   onPasteDetected?: (event: CopyPasteEvent) => void;
 }
 
+// Helper to check if error is a Monaco "Canceled" error
+function isMonacoCanceledError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return message.includes("canceled") || message.includes("cancelled");
+  }
+  if (typeof error === "string") {
+    const message = error.toLowerCase();
+    return message.includes("canceled") || message.includes("cancelled");
+  }
+  return false;
+}
+
 export function CodeEditor({
   value,
   onChange,
@@ -46,33 +59,88 @@ export function CodeEditor({
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
   const disposablesRef = useRef<Array<{ dispose: () => void }>>([]);
+  const isMountedRef = useRef(true);
+
+  // Track mounted state and set up global error suppression
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    // Global handler to suppress Monaco "Canceled" errors from bubbling to console
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (isMonacoCanceledError(event.reason)) {
+        event.preventDefault();
+      }
+    };
+
+    const handleError = (event: ErrorEvent) => {
+      if (isMonacoCanceledError(event.error) || isMonacoCanceledError(event.message)) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+    window.addEventListener("error", handleError);
+
+    return () => {
+      isMountedRef.current = false;
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+      window.removeEventListener("error", handleError);
+    };
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       try {
+        // Mark as not mounted first
+        isMountedRef.current = false;
+
         // Dispose all subscriptions
         disposablesRef.current.forEach((d) => {
           try {
             d.dispose();
-          } catch {
-            // Ignore disposal errors
+          } catch (err) {
+            // Suppress Monaco "Canceled" errors during cleanup
+            if (!isMonacoCanceledError(err)) {
+              console.warn("Disposable cleanup error:", err);
+            }
           }
         });
         disposablesRef.current = [];
 
-        // Clear editor reference
+        // Dispose the editor instance properly
         if (editorRef.current) {
+          try {
+            editorRef.current.dispose();
+          } catch (err) {
+            // Suppress Monaco "Canceled" errors during disposal
+            if (!isMonacoCanceledError(err)) {
+              console.warn("Editor dispose error:", err);
+            }
+          }
           editorRef.current = null;
         }
-      } catch {
-        // Ignore cleanup errors
+      } catch (err) {
+        // Suppress Monaco "Canceled" errors
+        if (!isMonacoCanceledError(err)) {
+          console.warn("Cleanup error:", err);
+        }
       }
     };
   }, []);
 
   const handleEditorMount = useCallback(
     (editor: editor.IStandaloneCodeEditor) => {
+      // Don't set up if already unmounted
+      if (!isMountedRef.current) {
+        try {
+          editor.dispose();
+        } catch {
+          // Ignore disposal errors
+        }
+        return;
+      }
+
       try {
         editorRef.current = editor;
         setEditorError(null);
@@ -80,7 +148,8 @@ export function CodeEditor({
         // Detect paste events
         const pasteDisposable = editor.onDidPaste((e) => {
           try {
-            if (onPasteDetected && editorRef.current) {
+            if (!isMountedRef.current || !editorRef.current) return;
+            if (onPasteDetected) {
               const pastedLines = e.range.endLineNumber - e.range.startLineNumber + 1;
               const model = editor.getModel();
               const pastedText = model?.getValueInRange(e.range) || "";
@@ -91,8 +160,11 @@ export function CodeEditor({
                 timestamp: new Date().toISOString(),
               });
             }
-          } catch {
-            // Ignore paste detection errors
+          } catch (err) {
+            // Suppress Monaco "Canceled" errors
+            if (!isMonacoCanceledError(err)) {
+              console.warn("Paste detection error:", err);
+            }
           }
         });
         disposablesRef.current.push(pasteDisposable);
@@ -102,7 +174,7 @@ export function CodeEditor({
         if (domNode && onCopyDetected) {
           const copyHandler = () => {
             try {
-              if (!editorRef.current) return;
+              if (!isMountedRef.current || !editorRef.current) return;
               const selection = editor.getSelection();
               if (selection) {
                 const model = editor.getModel();
@@ -115,8 +187,11 @@ export function CodeEditor({
                   });
                 }
               }
-            } catch {
-              // Ignore copy detection errors
+            } catch (err) {
+              // Suppress Monaco "Canceled" errors
+              if (!isMonacoCanceledError(err)) {
+                console.warn("Copy detection error:", err);
+              }
             }
           };
           domNode.addEventListener("copy", copyHandler);
@@ -126,8 +201,14 @@ export function CodeEditor({
           });
         }
       } catch (error) {
+        // Suppress Monaco "Canceled" errors
+        if (isMonacoCanceledError(error)) {
+          return;
+        }
         console.error("Editor mount error:", error);
-        setEditorError("Failed to initialize code editor");
+        if (isMountedRef.current) {
+          setEditorError("Failed to initialize code editor");
+        }
       }
     },
     [onCopyDetected, onPasteDetected]
@@ -135,14 +216,32 @@ export function CodeEditor({
 
   const handleEditorChange = useCallback(
     (val: string | undefined) => {
+      // Skip if unmounted
+      if (!isMountedRef.current) return;
+
       try {
         onChange(val || "");
-      } catch {
-        // Ignore change errors (e.g., "Cancelled")
+      } catch (err) {
+        // Suppress Monaco "Canceled" errors
+        if (!isMonacoCanceledError(err)) {
+          console.warn("Editor change error:", err);
+        }
       }
     },
     [onChange]
   );
+
+  // Handle Monaco beforeMount to configure environment
+  const handleBeforeMount = useCallback((monaco: typeof import("monaco-editor")) => {
+    // Suppress Monaco's internal canceled errors
+    try {
+      monaco.editor.onDidCreateEditor(() => {
+        // Editor created
+      });
+    } catch {
+      // Ignore configuration errors
+    }
+  }, []);
 
   if (editorError) {
     return (
@@ -161,7 +260,9 @@ export function CodeEditor({
         value={value}
         onChange={handleEditorChange}
         onMount={handleEditorMount}
+        beforeMount={handleBeforeMount}
         theme="vs-dark"
+        keepCurrentModel={true}
         options={{
           readOnly,
           minimap: { enabled: false },
@@ -172,6 +273,12 @@ export function CodeEditor({
           automaticLayout: true,
           tabSize: 2,
           padding: { top: 16, bottom: 16 },
+          // Additional stability options
+          renderValidationDecorations: "off",
+          quickSuggestions: false,
+          suggestOnTriggerCharacters: false,
+          parameterHints: { enabled: false },
+          folding: false,
         }}
       />
     </div>

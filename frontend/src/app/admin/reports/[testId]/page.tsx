@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { reportsApi, questionsApi, testsApi } from "@/lib/api";
+import { reportsApi, questionsApi, testsApi, specializationApi } from "@/lib/api";
 import { Report, Question, Test } from "@/types";
 import {
   Card,
@@ -39,7 +39,24 @@ import {
   Target,
   FileText,
   Sparkles,
+  Zap,
+  ExternalLink,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   SkillRadarChart,
   generateSkillDataFromReport,
@@ -88,6 +105,13 @@ export default function ReportDetailPage() {
   const [hasNdaSigned, setHasNdaSigned] = useState(false);
   const [ndaDownloading, setNdaDownloading] = useState(false);
   const [testData, setTestData] = useState<Test | null>(null);
+
+  // Specialization test state
+  const [showSpecializationDialog, setShowSpecializationDialog] = useState(false);
+  const [focusAreas, setFocusAreas] = useState<Array<{id: string; name: string; description: string; sub_specialties: string[]}>>([]);
+  const [selectedFocusArea, setSelectedFocusArea] = useState<string>("");
+  const [generatingSpecTest, setGeneratingSpecTest] = useState(false);
+  const [specTestResult, setSpecTestResult] = useState<{testId: number; accessToken: string} | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -193,6 +217,97 @@ export default function ReportDetailPage() {
     } finally {
       setNdaDownloading(false);
     }
+  };
+
+  // Fetch focus areas when dialog opens
+  const handleOpenSpecializationDialog = async () => {
+    setShowSpecializationDialog(true);
+    setSpecTestResult(null);
+    setSelectedFocusArea("");
+    try {
+      const res = await specializationApi.getFocusAreas();
+      setFocusAreas(res.data);
+    } catch (error) {
+      console.error("Error fetching focus areas:", error);
+    }
+  };
+
+  // Generate specialization test
+  const handleGenerateSpecializationTest = async () => {
+    if (!report || !testData || !selectedFocusArea) return;
+    setGeneratingSpecTest(true);
+    try {
+      const res = await specializationApi.generate({
+        candidate_id: testData.candidate_id,
+        focus_area: selectedFocusArea,
+        duration_minutes: 60,
+      });
+      if (res.data.success && res.data.test_id && res.data.access_token) {
+        setSpecTestResult({
+          testId: res.data.test_id,
+          accessToken: res.data.access_token,
+        });
+      } else {
+        alert(res.data.message || "Failed to generate specialization test");
+      }
+    } catch (error) {
+      console.error("Error generating specialization test:", error);
+      alert("Failed to generate specialization test");
+    } finally {
+      setGeneratingSpecTest(false);
+    }
+  };
+
+  // Get the full specialization test link - always use port 3000 for Next.js app
+  const getSpecTestLink = () => {
+    if (!specTestResult) return '';
+    if (typeof window === 'undefined') return '';
+    const protocol = window.location.protocol;
+    const hostname = window.location.hostname;
+    // Always use port 3000 since that's where Next.js dev server runs
+    return `${protocol}//${hostname}:3000/specialization/${specTestResult.accessToken}`;
+  };
+
+  // Copy specialization test link with robust fallbacks
+  const copySpecTestLink = async () => {
+    const link = getSpecTestLink();
+    if (!link) return;
+
+    try {
+      // Try modern clipboard API first
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        await navigator.clipboard.writeText(link);
+        alert("Link copied to clipboard!");
+        return;
+      }
+    } catch (err) {
+      console.warn("Clipboard API failed:", err);
+    }
+
+    // Fallback: Create temporary input element
+    try {
+      const input = document.createElement("input");
+      input.value = link;
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      input.style.left = "0";
+      input.style.top = "0";
+      document.body.appendChild(input);
+      input.focus();
+      input.select();
+      input.setSelectionRange(0, 99999);
+      const success = document.execCommand("copy");
+      document.body.removeChild(input);
+      if (success) {
+        alert("Link copied to clipboard!");
+        return;
+      }
+    } catch (err) {
+      console.warn("execCommand copy failed:", err);
+    }
+
+    // Ultimate fallback: Show prompt
+    window.prompt("Copy this link manually:", link);
   };
 
   const formatBreakTime = (seconds: number) => {
@@ -801,6 +916,14 @@ export default function ReportDetailPage() {
               Generate Certificate
             </Button>
           )}
+          <Button
+            variant="outline"
+            onClick={handleOpenSpecializationDialog}
+            className="gap-2"
+          >
+            <Zap className="w-4 h-4" />
+            Specialization Test
+          </Button>
           {hasNdaSigned && (
             <Button
               variant="outline"
@@ -1331,6 +1454,141 @@ export default function ReportDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Specialization Test Dialog */}
+      <Dialog open={showSpecializationDialog} onOpenChange={setShowSpecializationDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="w-5 h-5 text-purple-500" />
+              Generate Specialization Test
+            </DialogTitle>
+            <DialogDescription>
+              Create a 1-hour deep-dive assessment to identify {report?.candidate_name}&apos;s exact sub-specialty.
+            </DialogDescription>
+          </DialogHeader>
+
+          {specTestResult ? (
+            <div className="py-4 space-y-4">
+              <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                  <span className="font-medium text-green-700 dark:text-green-300">Test Created Successfully!</span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  The specialization test has been generated with{" "}
+                  {focusAreas.find(a => a.id === selectedFocusArea)?.name || selectedFocusArea} focus.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Test Link (click to select):</label>
+                <input
+                  type="text"
+                  readOnly
+                  value={getSpecTestLink()}
+                  className="w-full px-3 py-2 text-xs border rounded bg-muted font-mono cursor-text"
+                  onClick={(e) => {
+                    e.currentTarget.select();
+                    e.currentTarget.setSelectionRange(0, 99999);
+                  }}
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={copySpecTestLink} className="flex-1">
+                    <Clipboard className="w-4 h-4 mr-2" />
+                    Copy Link
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => window.open(getSpecTestLink(), '_blank')}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                    Open Test
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="py-4 space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Select Focus Area</label>
+                <Select value={selectedFocusArea} onValueChange={setSelectedFocusArea}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a focus area..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {focusAreas.map((area) => (
+                      <SelectItem key={area.id} value={area.id}>
+                        <div>
+                          <span>{area.name}</span>
+                          <span className="text-xs text-muted-foreground ml-2">
+                            ({area.sub_specialties?.length || 0} sub-specialties)
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedFocusArea && (
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-sm font-medium mb-2">Sub-specialties to assess:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {focusAreas
+                      .find((a) => a.id === selectedFocusArea)
+                      ?.sub_specialties?.slice(0, 6)
+                      .map((sub) => (
+                        <span
+                          key={sub}
+                          className="text-xs px-2 py-1 bg-primary/10 text-primary rounded-full"
+                        >
+                          {sub}
+                        </span>
+                      ))}
+                    {(focusAreas.find((a) => a.id === selectedFocusArea)?.sub_specialties?.length || 0) > 6 && (
+                      <span className="text-xs px-2 py-1 text-muted-foreground">
+                        +{(focusAreas.find((a) => a.id === selectedFocusArea)?.sub_specialties?.length || 0) - 6} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="text-sm text-muted-foreground p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                <p className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-yellow-500" />
+                  <span>This will generate a 60-minute focused assessment</span>
+                </p>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSpecializationDialog(false)}>
+              {specTestResult ? "Close" : "Cancel"}
+            </Button>
+            {!specTestResult && (
+              <Button
+                onClick={handleGenerateSpecializationTest}
+                disabled={!selectedFocusArea || generatingSpecTest}
+              >
+                {generatingSpecTest ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Generate Test
+                  </>
+                )}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

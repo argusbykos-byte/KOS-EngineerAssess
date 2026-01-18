@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Users, FileText, BarChart3, MessageSquare, ShieldAlert, GitCompare, Trophy, ClipboardList } from "lucide-react";
+import { LayoutDashboard, Users, FileText, BarChart3, MessageSquare, ShieldAlert, GitCompare, Trophy, ClipboardList, Target } from "lucide-react";
 
 const navigation = [
   { name: "Dashboard", href: "/admin", icon: LayoutDashboard },
@@ -12,6 +12,7 @@ const navigation = [
   { name: "Applications", href: "/admin/applications", icon: ClipboardList },
   { name: "Candidates", href: "/admin/candidates", icon: Users },
   { name: "Reports", href: "/admin/reports", icon: FileText },
+  { name: "Specialization", href: "/admin/specialization-results", icon: Target },
   { name: "Compare", href: "/admin/compare", icon: GitCompare },
   { name: "Integrity", href: "/admin/cheating-logs", icon: ShieldAlert },
   { name: "Suggestions", href: "/admin/suggestions", icon: MessageSquare },

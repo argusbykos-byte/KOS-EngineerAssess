@@ -76,6 +76,44 @@ function formatDate(dateString: string | null | undefined): string {
   });
 }
 
+// Helper to copy text to clipboard with fallbacks for HTTP
+async function copyToClipboard(text: string): Promise<boolean> {
+  // Try navigator.clipboard first (works on HTTPS and localhost)
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
+      console.warn("navigator.clipboard.writeText failed:", err);
+    }
+  }
+
+  // Fallback: Use execCommand (deprecated but works on HTTP)
+  try {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-999999px";
+    textArea.style.top = "-999999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    const successful = document.execCommand("copy");
+    document.body.removeChild(textArea);
+
+    if (successful) {
+      return true;
+    }
+  } catch (err) {
+    console.warn("execCommand copy failed:", err);
+  }
+
+  // Final fallback: Show prompt dialog
+  window.prompt("Copy this link manually:", text);
+  return false;
+}
+
 // Test status badge component
 function TestStatusBadge({ status }: { status: string }) {
   const statusConfig: Record<string, { label: string; className: string }> = {
@@ -148,6 +186,19 @@ export function CandidateTable({
   // Reset integrity monitoring state
   const [resettingTabSwitches, setResettingTabSwitches] = useState<number | null>(null);
   const [resettingPasteAttempts, setResettingPasteAttempts] = useState<number | null>(null);
+
+  // Reinstate disqualified test state
+  const [reinstating, setReinstating] = useState<number | null>(null);
+  const [showReinstateDialog, setShowReinstateDialog] = useState(false);
+  const [testToReinstate, setTestToReinstate] = useState<{
+    id: number;
+    candidateName: string;
+    disqualificationReason: string | null;
+    disqualifiedAt: string | null;
+  } | null>(null);
+
+  // Mark completed state
+  const [markingCompleted, setMarkingCompleted] = useState<number | null>(null);
 
   // CRITICAL BUG FIX: Global operation state to prevent double-clicks and show progress
   const [isGenerating, setIsGenerating] = useState(false);
@@ -352,7 +403,7 @@ export function CandidateTable({
   };
 
   const copyGeneratedLink = async () => {
-    await navigator.clipboard.writeText(generatedTestLink);
+    await copyToClipboard(generatedTestLink);
     setCopied("dialog");
     setTimeout(() => setCopied(null), 3000);
   };
@@ -409,7 +460,7 @@ export function CandidateTable({
 
   const copyTestLink = async (token: string) => {
     const testLink = `${getBaseUrl()}/test/${token}`;
-    await navigator.clipboard.writeText(testLink);
+    await copyToClipboard(testLink);
     setCopied(token);
     setTimeout(() => setCopied(null), 3000);
   };
@@ -460,6 +511,54 @@ export function CandidateTable({
       alert("Failed to reset paste attempts");
     } finally {
       setResettingPasteAttempts(null);
+    }
+  };
+
+  // Show reinstate confirmation dialog
+  const confirmReinstateTest = (
+    testId: number,
+    candidateName: string,
+    disqualificationReason: string | null,
+    disqualifiedAt: string | null
+  ) => {
+    setTestToReinstate({
+      id: testId,
+      candidateName,
+      disqualificationReason,
+      disqualifiedAt,
+    });
+    setShowReinstateDialog(true);
+  };
+
+  // Handle reinstate test - give candidate another chance
+  const handleReinstateTest = async () => {
+    if (!testToReinstate) return;
+
+    setReinstating(testToReinstate.id);
+    try {
+      await testsApi.reinstateTest(testToReinstate.id);
+      onRefresh();
+    } catch (error) {
+      console.error("Error reinstating test:", error);
+      alert("Failed to reinstate test. The test may not be in a disqualified state.");
+    } finally {
+      setReinstating(null);
+      setShowReinstateDialog(false);
+      setTestToReinstate(null);
+    }
+  };
+
+  // Handle mark test as completed
+  const handleMarkCompleted = async (testId: number) => {
+    setMarkingCompleted(testId);
+    try {
+      await testsApi.markCompleted(testId);
+      onRefresh();
+    } catch (error) {
+      console.error("Error marking test as completed:", error);
+      alert("Failed to mark test as completed.");
+    } finally {
+      setMarkingCompleted(null);
     }
   };
 
@@ -566,6 +665,53 @@ export function CandidateTable({
                   )}
                 </Button>
               </>
+            )}
+
+            {/* Reinstate button for disqualified tests */}
+            {test.is_disqualified && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 border-orange-300"
+                onClick={() => confirmReinstateTest(
+                  test.id,
+                  candidateName,
+                  test.disqualification_reason || null,
+                  test.disqualified_at || null
+                )}
+                disabled={reinstating === test.id}
+                title={test.disqualification_reason || "Reinstate this disqualified test"}
+              >
+                {reinstating === test.id ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <RotateCcw className="w-4 h-4 mr-1" />
+                    Reinstate Test
+                  </>
+                )}
+              </Button>
+            )}
+
+            {/* Mark Completed button for in_progress tests that have been scored */}
+            {test.status === "in_progress" && test.overall_score !== null && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-300"
+                onClick={() => handleMarkCompleted(test.id)}
+                disabled={markingCompleted === test.id}
+                title="Mark this test as completed"
+              >
+                {markingCompleted === test.id ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 mr-1" />
+                    Mark Completed
+                  </>
+                )}
+              </Button>
             )}
 
             {hasCompletedTest && !test.overall_score && (
@@ -741,6 +887,93 @@ export function CandidateTable({
                 <>
                   <Trash2 className="w-4 h-4 mr-1" />
                   Delete Interview
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reinstate Disqualified Test Confirmation Dialog */}
+      <Dialog open={showReinstateDialog} onOpenChange={setShowReinstateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-600">
+              <AlertTriangle className="w-5 h-5" />
+              Reinstate Disqualified Test?
+            </DialogTitle>
+            <DialogDescription className="pt-2 space-y-2">
+              <div>
+                <strong>Candidate:</strong> {testToReinstate?.candidateName}
+              </div>
+              {testToReinstate?.disqualifiedAt && (
+                <div>
+                  <strong>Disqualified:</strong> {formatDate(testToReinstate.disqualifiedAt)}
+                </div>
+              )}
+              {testToReinstate?.disqualificationReason && (
+                <div>
+                  <strong>Reason:</strong> {testToReinstate.disqualificationReason}
+                </div>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              This will:
+            </p>
+            <ul className="text-sm space-y-1.5 ml-4">
+              <li className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-green-500" />
+                Change status back to &quot;In Progress&quot;
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-green-500" />
+                Clear ALL violation counters (tabs, pastes, etc.)
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-green-500" />
+                Allow candidate to continue their test
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-green-500" />
+                Give them a fresh start
+              </li>
+            </ul>
+            <div className="p-3 bg-muted rounded-lg text-xs">
+              <p className="font-medium mb-1">Violation Scoring System:</p>
+              <p className="text-muted-foreground">
+                Tab switch = 1.0 pt | Paste = 2.0 pt | Copy = 1.0 pt |
+                Dev tools = 3.0 pt | Right click = 0.5 pt | Focus loss = 0.5 pt |
+                Threshold = 5.0 pts
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowReinstateDialog(false);
+                setTestToReinstate(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              className="bg-orange-600 hover:bg-orange-700"
+              onClick={handleReinstateTest}
+              disabled={reinstating === testToReinstate?.id}
+            >
+              {reinstating === testToReinstate?.id ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  Reinstating...
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="w-4 h-4 mr-1" />
+                  Yes, Reinstate Test
                 </>
               )}
             </Button>

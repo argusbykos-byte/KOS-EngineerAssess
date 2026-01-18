@@ -2353,6 +2353,311 @@ Please analyze this candidate and provide your assessment as JSON."""
             ],
         }
 
+    async def generate_specialization_test_questions(
+        self,
+        focus_area: str,
+        sub_specialties: List[str],
+        candidate_name: str,
+        self_description: str = "",
+        top_skills: List[str] = None,
+        previous_score: float = None,
+        resume_summary: str = "",
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate 8-10 questions for a 1-hour SPECIALIZATION test.
+
+        These questions are designed to identify the candidate's EXACT sub-specialty
+        within their focus area.
+
+        Args:
+            focus_area: The focus area (e.g., "ml", "embedded")
+            sub_specialties: List of possible sub-specialties
+            candidate_name: Name of the candidate
+            self_description: Candidate's self-description role
+            top_skills: Top self-rated skills
+            previous_score: Score from previous standard test
+            resume_summary: Summary of resume
+
+        Returns:
+            List of question dictionaries with tests_sub_specialty field
+        """
+        skills_str = ", ".join(top_skills[:10]) if top_skills else "Not provided"
+
+        messages = [
+            {
+                "role": "system",
+                "content": f"""You are creating a 1-hour SPECIALIZATION test for {candidate_name}.
+
+Their background:
+- Role: {self_description or "Not specified"}
+- Previous test score: {previous_score or "Not taken yet"}
+- Top skills from self-assessment: {skills_str}
+- Resume highlights: {resume_summary[:1500] if resume_summary else "Not provided"}
+
+Focus area: {focus_area.upper()}
+Possible sub-specialties: {", ".join(sub_specialties)}
+
+Generate 8-10 questions that will identify their EXACT sub-specialty within {focus_area}.
+
+Question types to include:
+- 2 theoretical depth questions (test foundational understanding)
+- 3 practical implementation questions (test real-world skills)
+- 2 trade-off/decision questions (test judgment and experience)
+- 2 cutting-edge/research questions (test growth potential and current knowledge)
+
+Each question should help differentiate between sub-specialties.
+For ML, differentiate: RL vs Supervised, Training vs Inference, CV vs NLP, Research vs Production.
+For Embedded, differentiate: RTOS vs Bare-metal, Drivers vs Application, Power vs Performance.
+
+Return a JSON array of 8-10 question objects with this structure:
+{{
+  "question_text": "The question prompt",
+  "question_code": "Code snippet if applicable, null otherwise",
+  "expected_answer": "Key points in expected answer",
+  "hints": ["Hint 1", "Hint 2"],
+  "tests_sub_specialty": "Which sub-specialty this question primarily tests",
+  "question_type": "theoretical|practical|tradeoff|cutting_edge"
+}}
+
+Return ONLY the JSON array, no other text."""
+            },
+            {
+                "role": "user",
+                "content": f"Generate 8-10 specialization questions for {focus_area} to identify the candidate's exact sub-specialty among: {', '.join(sub_specialties[:5])}"
+            }
+        ]
+
+        response = await self._call_kimi_with_retry(messages, temperature=0.7)
+
+        if not response:
+            print(f"[AIService] Failed to generate specialization test questions for {focus_area}")
+            return []
+
+        # Log raw response for debugging
+        print(f"[AIService] Specialization raw response length: {len(response)} chars")
+        print(f"[AIService] Specialization raw response preview: {response[:500]}...")
+
+        # Clean up the response - strip markdown code blocks
+        cleaned_response = response.strip()
+
+        # Remove markdown code block wrappers
+        if cleaned_response.startswith("```json"):
+            cleaned_response = cleaned_response[7:]
+        elif cleaned_response.startswith("```"):
+            cleaned_response = cleaned_response[3:]
+        if cleaned_response.endswith("```"):
+            cleaned_response = cleaned_response[:-3]
+        cleaned_response = cleaned_response.strip()
+
+        # Strategy 1: Direct JSON parse
+        try:
+            questions = json.loads(cleaned_response)
+            if isinstance(questions, list) and len(questions) > 0:
+                print(f"[AIService] Successfully parsed {len(questions)} specialization questions (direct)")
+                return questions[:10]
+        except json.JSONDecodeError as e:
+            print(f"[AIService] Direct JSON parse failed: {e}")
+
+        # Strategy 2: Find JSON array in response
+        match = re.search(r'\[\s*\{.*\}\s*\]', cleaned_response, re.DOTALL)
+        if match:
+            try:
+                questions = json.loads(match.group())
+                if isinstance(questions, list) and len(questions) > 0:
+                    print(f"[AIService] Successfully parsed {len(questions)} specialization questions (regex)")
+                    return questions[:10]
+            except json.JSONDecodeError as e:
+                print(f"[AIService] Regex match JSON parse failed: {e}")
+
+        # Strategy 3: Try to find JSON between first [ and last ]
+        first_bracket = cleaned_response.find('[')
+        last_bracket = cleaned_response.rfind(']')
+        if first_bracket != -1 and last_bracket != -1 and last_bracket > first_bracket:
+            json_str = cleaned_response[first_bracket:last_bracket + 1]
+            try:
+                questions = json.loads(json_str)
+                if isinstance(questions, list) and len(questions) > 0:
+                    print(f"[AIService] Successfully parsed {len(questions)} specialization questions (bracket extraction)")
+                    return questions[:10]
+            except json.JSONDecodeError as e:
+                print(f"[AIService] Bracket extraction JSON parse failed: {e}")
+                # Log the problematic JSON for debugging
+                print(f"[AIService] Problematic JSON (first 1000 chars): {json_str[:1000]}")
+
+        # Strategy 4: Try to parse individual question objects and build array
+        question_matches = re.findall(r'\{[^{}]*"question_text"[^{}]*\}', cleaned_response, re.DOTALL)
+        if question_matches:
+            questions = []
+            for qm in question_matches:
+                try:
+                    # Try to parse as-is
+                    q = json.loads(qm)
+                    questions.append(q)
+                except:
+                    # Try to fix common issues - unescaped quotes in strings
+                    try:
+                        # This is a fallback - try to extract key fields manually
+                        text_match = re.search(r'"question_text"\s*:\s*"([^"]*(?:\\.[^"]*)*)"', qm)
+                        if text_match:
+                            questions.append({
+                                "question_text": text_match.group(1),
+                                "question_code": None,
+                                "expected_answer": "",
+                                "hints": [],
+                                "tests_sub_specialty": sub_specialties[0] if sub_specialties else "General",
+                            })
+                    except:
+                        pass
+            if questions:
+                print(f"[AIService] Successfully parsed {len(questions)} specialization questions (individual extraction)")
+                return questions[:10]
+
+        print(f"[AIService] Failed to parse specialization questions response")
+        print(f"[AIService] Full response for debugging:\n{cleaned_response[:2000]}")
+        return []
+
+    async def analyze_specialization_results(
+        self,
+        focus_area: str,
+        sub_specialties: List[str],
+        candidate_name: str,
+        question_answers: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        Analyze completed specialization test to determine candidate's exact sub-specialty.
+
+        Args:
+            focus_area: The focus area of the test
+            sub_specialties: Possible sub-specialties
+            candidate_name: Name of the candidate
+            question_answers: List of {question_text, candidate_answer, score, feedback}
+
+        Returns:
+            Analysis dictionary with primary_specialty, sub_specialties rankings, etc.
+        """
+        # Build answers context
+        answers_context = []
+        for qa in question_answers[:10]:
+            answers_context.append(f"""
+Question: {qa.get('question_text', '')[:500]}
+Answer: {qa.get('candidate_answer', 'No answer')[:1000]}
+Score: {qa.get('score', 'Not evaluated')}
+Feedback: {qa.get('feedback', 'No feedback')[:500]}
+""")
+
+        messages = [
+            {
+                "role": "system",
+                "content": f"""You are analyzing a completed specialization test to identify {candidate_name}'s exact sub-specialty within {focus_area.upper()}.
+
+Possible sub-specialties: {", ".join(sub_specialties)}
+
+Based on the candidate's answers, identify:
+1. Their PRIMARY sub-specialty (the area where they show deepest expertise)
+2. Rank all sub-specialties by evidence from their answers
+3. Confidence level in this determination
+4. Recommended tasks that fit their specialty
+5. Team fit analysis
+
+Return a JSON object with this structure:
+{{
+  "primary_specialty": "The specific sub-specialty, e.g., 'Reinforcement Learning - Policy Optimization'",
+  "specialty_score": <0-100, overall score in their specialty>,
+  "confidence": <0-100, confidence in determination>,
+  "sub_specialties": [
+    {{"name": "Sub-specialty name", "score": <0-100>, "rank": 1, "evidence": "What in their answers showed this"}},
+    ...
+  ],
+  "recommended_tasks": [
+    "Specific task recommendation based on their specialty",
+    ...
+  ],
+  "team_fit_analysis": "Analysis of how they'd fit in a team, who they'd work well with",
+  "strengths": ["Key strengths identified"],
+  "areas_to_develop": ["Areas that could use growth"],
+  "overall_assessment": "Brief overall assessment"
+}}
+
+Be specific in identifying the sub-specialty - don't just say "Machine Learning", say "Reinforcement Learning - Model-Based Methods" or "Computer Vision - Object Detection".
+
+Return ONLY the JSON object, no other text."""
+            },
+            {
+                "role": "user",
+                "content": f"""Analyze these answers from {candidate_name}'s {focus_area} specialization test:
+
+{"".join(answers_context)}
+
+Identify their exact sub-specialty within {focus_area}."""
+            }
+        ]
+
+        response = await self._call_kimi_with_retry(messages, temperature=0.3)
+
+        if not response:
+            print(f"[AIService] Failed to analyze specialization results")
+            return self._get_default_specialization_analysis(focus_area)
+
+        # Log raw response for debugging
+        print(f"[AIService] Specialization analysis raw response length: {len(response)} chars")
+        print(f"[AIService] Specialization analysis raw response preview: {response[:300]}...")
+
+        # Clean up the response - strip markdown code blocks
+        cleaned_response = response.strip()
+
+        # Remove markdown code block wrappers
+        if cleaned_response.startswith("```json"):
+            cleaned_response = cleaned_response[7:]
+        elif cleaned_response.startswith("```"):
+            cleaned_response = cleaned_response[3:]
+        if cleaned_response.endswith("```"):
+            cleaned_response = cleaned_response[:-3]
+        cleaned_response = cleaned_response.strip()
+
+        # Strategy 1: Direct JSON parse
+        try:
+            analysis = json.loads(cleaned_response)
+            if isinstance(analysis, dict):
+                print(f"[AIService] Successfully parsed specialization analysis (direct)")
+                return analysis
+        except json.JSONDecodeError as e:
+            print(f"[AIService] Direct JSON parse failed for analysis: {e}")
+
+        # Strategy 2: Find JSON object in response (greedy match for nested objects)
+        first_brace = cleaned_response.find('{')
+        last_brace = cleaned_response.rfind('}')
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            json_str = cleaned_response[first_brace:last_brace + 1]
+            try:
+                analysis = json.loads(json_str)
+                if isinstance(analysis, dict):
+                    print(f"[AIService] Successfully parsed specialization analysis (brace extraction)")
+                    return analysis
+            except json.JSONDecodeError as e:
+                print(f"[AIService] Brace extraction JSON parse failed: {e}")
+                print(f"[AIService] Problematic JSON (first 500 chars): {json_str[:500]}")
+
+        print(f"[AIService] Failed to parse specialization analysis")
+        print(f"[AIService] Full response for debugging:\n{cleaned_response[:1000]}")
+        return self._get_default_specialization_analysis(focus_area)
+
+    def _get_default_specialization_analysis(self, focus_area: str) -> Dict[str, Any]:
+        """Return default specialization analysis when AI fails."""
+        return {
+            "primary_specialty": f"{focus_area.title()} Specialist",
+            "specialty_score": 70,
+            "confidence": 50,
+            "sub_specialties": [],
+            "recommended_tasks": [
+                "Review test manually to determine specialty",
+                "Schedule follow-up technical interview"
+            ],
+            "team_fit_analysis": "Manual review required to determine team fit.",
+            "strengths": ["Unable to analyze - please review manually"],
+            "areas_to_develop": ["Unable to analyze - please review manually"],
+            "overall_assessment": "Automated analysis could not be completed. Please review manually."
+        }
+
     async def close(self):
         await self.client.aclose()
 

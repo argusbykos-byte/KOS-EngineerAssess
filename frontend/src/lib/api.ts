@@ -139,6 +139,24 @@ export const testsApi = {
     message: string;
     previous_count: number;
   }>(`/tests/${testId}/reset-paste-attempts`),
+
+  // Admin: Reinstate a disqualified test (give candidate another chance)
+  reinstateTest: (testId: number) => api.post<{
+    success: boolean;
+    message: string;
+    previous_status: string;
+    previous_reason: string | null;
+    new_status: string;
+    all_violations_cleared: boolean;
+  }>(`/tests/${testId}/reinstate`),
+
+  // Admin: Mark a test as completed (when in_progress but already scored)
+  markCompleted: (testId: number) => api.post<{
+    success: boolean;
+    message: string;
+    previous_status: string;
+    new_status: string;
+  }>(`/tests/${testId}/mark-completed`),
 };
 
 // Questions
@@ -743,6 +761,153 @@ export const applicationsApi = {
       access_token: string;
       message: string;
     }>(`/applications/admin/${id}/create-candidate`, data),
+
+  // Import candidates from Excel file
+  importFromExcel: () =>
+    longRunningApi.post<{
+      success: boolean;
+      message: string;
+      stats: {
+        new_candidates: number;
+        updated_candidates: number;
+        resumes_matched: number;
+        resumes_missing: number;
+        skills_imported: number;
+        errors: number;
+      };
+      output: string;
+    }>("/applications/admin/import"),
+};
+
+// Specialization Tests
+export const specializationApi = {
+  // List available focus areas
+  getFocusAreas: () =>
+    api.get<Array<{
+      id: string;
+      name: string;
+      description: string;
+      sub_specialties: string[];
+    }>>("/specialization/focus-areas"),
+
+  // Generate a specialization test
+  generate: (data: {
+    candidate_id: number;
+    focus_area: string;
+    duration_minutes?: number;
+  }) =>
+    testGenerationApi.post<{
+      success: boolean;
+      message: string;
+      test_id: number | null;
+      access_token: string | null;
+      questions_generated: number;
+    }>("/specialization/generate", data),
+
+  // Get specialization results for a test
+  getResults: (testId: number) =>
+    api.get<{
+      id: number;
+      test_id: number;
+      candidate_id: number;
+      candidate_name: string | null;
+      focus_area: string;
+      primary_specialty: string | null;
+      specialty_score: number | null;
+      confidence: number | null;
+      sub_specialties: Array<{
+        name: string;
+        score: number;
+        rank: number;
+        evidence: string | null;
+      }>;
+      recommended_tasks: string[];
+      team_fit_analysis: string | null;
+      created_at: string;
+    }>(`/specialization/${testId}/results`),
+
+  // Analyze completed specialization test
+  analyze: (testId: number) =>
+    longRunningApi.post<{
+      success: boolean;
+      message: string;
+      primary_specialty: string | null;
+      specialty_score: number | null;
+    }>(`/specialization/${testId}/analyze`),
+
+  // List all specialization results
+  listResults: (params?: { focus_area?: string; page?: number; page_size?: number }) =>
+    api.get<{
+      items: Array<{
+        id: number;
+        candidate_id: number;
+        candidate_name: string;
+        focus_area: string;
+        primary_specialty: string | null;
+        specialty_score: number | null;
+        status: string;
+        created_at: string;
+      }>;
+      total: number;
+      page: number;
+      page_size: number;
+      total_pages: number;
+    }>("/specialization/results", { params }),
+
+  // Get team builder data
+  getTeamBuilder: (focusArea?: string) =>
+    api.get<{
+      candidates: Array<{
+        id: number;
+        test_id: number;
+        candidate_id: number;
+        candidate_name: string | null;
+        focus_area: string;
+        primary_specialty: string | null;
+        specialty_score: number | null;
+        confidence: number | null;
+        sub_specialties: Array<{
+          name: string;
+          score: number;
+          rank: number;
+          evidence: string | null;
+        }>;
+        recommended_tasks: string[];
+        team_fit_analysis: string | null;
+        created_at: string;
+      }>;
+      composition_suggestions: Array<{
+        candidate_id: number;
+        candidate_name: string;
+        primary_specialty: string;
+        recommended_role: string;
+        team_fit_notes: string;
+        synergy_with: string[];
+      }>;
+      focus_area_groups: Record<string, number[]>;
+    }>("/specialization/team-builder", { params: focusArea ? { focus_area: focusArea } : {} }),
+
+  // Get candidate's specialization results
+  getCandidateSpecializations: (candidateId: number) =>
+    api.get<Array<{
+      id: number;
+      test_id: number;
+      candidate_id: number;
+      candidate_name: string | null;
+      focus_area: string;
+      primary_specialty: string | null;
+      specialty_score: number | null;
+      confidence: number | null;
+      sub_specialties: Array<{
+        name: string;
+        score: number;
+        rank: number;
+        evidence: string | null;
+      }>;
+      recommended_tasks: string[];
+      team_fit_analysis: string | null;
+      created_at: string;
+    }>>(`/specialization/candidate/${candidateId}`),
 };
 
 export default api;

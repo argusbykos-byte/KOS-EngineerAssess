@@ -29,3 +29,4 @@ class Candidate(Base):
     # Relationships
     tests = relationship("Test", back_populates="candidate", cascade="all, delete-orphan")
     competition_registrations = relationship("CompetitionRegistration", back_populates="candidate", cascade="all, delete-orphan")
+    specialization_results = relationship("SpecializationResult", back_populates="candidate", cascade="all, delete-orphan")

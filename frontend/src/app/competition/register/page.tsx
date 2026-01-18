@@ -150,9 +150,30 @@ function RegisterContent() {
               <Button
                 variant="outline"
                 className="flex-1"
-                onClick={() => {
+                onClick={async () => {
                   const fullUrl = `${window.location.origin}${screeningUrl}`;
-                  navigator.clipboard.writeText(fullUrl);
+                  // Try navigator.clipboard first, then fallbacks
+                  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+                    try {
+                      await navigator.clipboard.writeText(fullUrl);
+                      return;
+                    } catch (err) {
+                      console.warn("navigator.clipboard.writeText failed:", err);
+                    }
+                  }
+                  // Fallback: execCommand
+                  try {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = fullUrl;
+                    textArea.style.position = "fixed";
+                    textArea.style.left = "-999999px";
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand("copy");
+                    document.body.removeChild(textArea);
+                  } catch (err) {
+                    window.prompt("Copy this link manually:", fullUrl);
+                  }
                 }}
               >
                 Copy Link

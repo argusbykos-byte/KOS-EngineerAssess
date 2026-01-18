@@ -20,6 +20,10 @@ export interface TestSummary {
   end_time: string | null;
   overall_score: number | null;
   created_at?: string;
+  // Disqualification info
+  is_disqualified?: boolean;
+  disqualification_reason?: string | null;
+  disqualified_at?: string | null;
 }
 
 export interface Test {

@@ -121,9 +121,30 @@ export default function CompetitionDetailPage() {
     return <Badge variant="outline">Low</Badge>;
   };
 
-  const copyRegistrationLink = () => {
+  const copyRegistrationLink = async () => {
     const link = `${window.location.origin}/competition/register?id=${competitionId}`;
-    navigator.clipboard.writeText(link);
+    // Try navigator.clipboard first, then fallbacks
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      try {
+        await navigator.clipboard.writeText(link);
+        return;
+      } catch (err) {
+        console.warn("navigator.clipboard.writeText failed:", err);
+      }
+    }
+    // Fallback: execCommand
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = link;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-999999px";
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+    } catch (err) {
+      window.prompt("Copy this link manually:", link);
+    }
   };
 
   if (loading) {

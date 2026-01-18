@@ -132,12 +132,36 @@ export function CodePlayground({
   };
 
   const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
+    let success = false;
+    // Try navigator.clipboard first
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      try {
+        await navigator.clipboard.writeText(text);
+        success = true;
+      } catch (err) {
+        console.warn("navigator.clipboard.writeText failed:", err);
+      }
+    }
+    // Fallback: execCommand
+    if (!success) {
+      try {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.select();
+        success = document.execCommand("copy");
+        document.body.removeChild(textArea);
+      } catch (err) {
+        console.warn("execCommand copy failed:", err);
+      }
+    }
+    if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
+    } else {
+      window.prompt("Copy this text manually:", text);
     }
   };
 

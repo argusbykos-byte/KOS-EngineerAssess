@@ -368,6 +368,117 @@ async def reset_paste_attempts(test_id: int, db: AsyncSession = Depends(get_db))
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
+@router.post("/{test_id}/reinstate")
+async def reinstate_disqualified_test(test_id: int, db: AsyncSession = Depends(get_db)):
+    """Reinstate a disqualified test - give candidate another chance.
+
+    Resets ALL violation counters and changes status back to in_progress.
+    Only works for disqualified tests.
+
+    Violation Scoring System:
+    - Tab switch = 1.0 point
+    - Paste attempt = 2.0 points
+    - Copy attempt = 1.0 points
+    - Dev tools open = 3.0 points
+    - Right click = 0.5 points
+    - Focus loss = 0.5 points
+    - Disqualification threshold = 5.0 points
+    """
+    try:
+        result = await db.execute(select(Test).where(Test.id == test_id))
+        test = result.scalar_one_or_none()
+
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+
+        if not test.is_disqualified:
+            raise HTTPException(
+                status_code=400,
+                detail="Can only reinstate disqualified tests. This test is not disqualified."
+            )
+
+        # Save disqualification info for response
+        previous_reason = test.disqualification_reason
+        previous_status = test.status
+
+        # Reset test status to in_progress
+        test.status = "in_progress"
+        test.is_disqualified = False
+        test.disqualification_reason = None
+        test.disqualified_at = None
+
+        # Reset ALL violation counters
+        test.tab_switch_count = 0
+        test.paste_attempt_count = 0
+        test.copy_attempt_count = 0
+        test.right_click_count = 0
+        test.dev_tools_open_count = 0
+        test.focus_loss_count = 0
+        test.warning_count = 0
+
+        # Clear violation tracking arrays
+        test.violation_events = []
+        test.tab_switch_timestamps = []
+        flag_modified(test, "violation_events")
+        flag_modified(test, "tab_switch_timestamps")
+
+        await db.commit()
+
+        return {
+            "success": True,
+            "message": f"Test reinstated. Previous reason: {previous_reason}",
+            "previous_status": previous_status,
+            "previous_reason": previous_reason,
+            "new_status": "in_progress",
+            "all_violations_cleared": True
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+
+@router.post("/{test_id}/mark-completed")
+async def mark_test_completed(test_id: int, db: AsyncSession = Depends(get_db)):
+    """Mark a test as completed (admin endpoint).
+
+    Used when a test is still 'in_progress' but has already been scored/evaluated.
+    This can happen if the candidate's session ended without proper completion.
+    """
+    try:
+        result = await db.execute(select(Test).where(Test.id == test_id))
+        test = result.scalar_one_or_none()
+
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+
+        if test.status == "completed":
+            return {
+                "success": True,
+                "message": "Test is already completed",
+                "status": "completed"
+            }
+
+        previous_status = test.status
+        test.status = "completed"
+        test.end_time = test.end_time or datetime.utcnow()
+
+        await db.commit()
+
+        return {
+            "success": True,
+            "message": f"Test marked as completed (was: {previous_status})",
+            "previous_status": previous_status,
+            "new_status": "completed"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+
 @router.get("/token/{access_token}", response_model=TestWithQuestions)
 async def get_test_by_token(access_token: str, db: AsyncSession = Depends(get_db)):
     """Get test by access token (for candidates)."""
@@ -475,6 +586,9 @@ async def get_test_by_token(access_token: str, db: AsyncSession = Depends(get_db
         status=test.status,
         current_section=test.current_section,
         created_at=test.created_at,
+        # Test type for specialization tests
+        test_type=test.test_type or "standard",
+        specialization_focus=test.specialization_focus,
         candidate_name=test.candidate.name,
         candidate_email=test.candidate.email,
         categories=test.candidate.categories or [],

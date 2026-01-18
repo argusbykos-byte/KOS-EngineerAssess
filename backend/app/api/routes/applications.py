@@ -1207,3 +1207,101 @@ async def create_candidate_from_application(
         access_token=test.access_token,
         message=f"Successfully created candidate and test with {question_count} personalized questions for {app_full_name}",
     )
+
+
+@router.post("/admin/import")
+async def import_candidates_from_excel(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Trigger import of candidates from Excel file.
+
+    This endpoint runs the import script which reads candidates from
+    ~/Downloads/Kos Engineering Trial Day Application Form (Responses).xlsx
+    and matches resumes from ~/Downloads/Resume Trail Stanfor Engineers/
+
+    Returns import statistics.
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script_path = Path(__file__).parent.parent.parent.parent / "scripts" / "import_excel_candidates.py"
+
+    if not script_path.exists():
+        raise HTTPException(
+            status_code=500,
+            detail=f"Import script not found at {script_path}"
+        )
+
+    try:
+        # Run the import script
+        result = subprocess.run(
+            [sys.executable, str(script_path)],
+            capture_output=True,
+            text=True,
+            timeout=300,  # 5 minute timeout
+        )
+
+        # Parse output for statistics
+        output = result.stdout + result.stderr
+
+        # Extract stats from output
+        stats = {
+            "new_candidates": 0,
+            "updated_candidates": 0,
+            "resumes_matched": 0,
+            "resumes_missing": 0,
+            "skills_imported": 0,
+            "errors": 0,
+        }
+
+        for line in output.split("\n"):
+            if "New candidates created:" in line:
+                try:
+                    stats["new_candidates"] = int(line.split(":")[-1].strip())
+                except:
+                    pass
+            elif "Existing candidates updated:" in line:
+                try:
+                    stats["updated_candidates"] = int(line.split(":")[-1].strip())
+                except:
+                    pass
+            elif "Resumes matched:" in line:
+                try:
+                    stats["resumes_matched"] = int(line.split(":")[-1].strip())
+                except:
+                    pass
+            elif "Resumes missing:" in line:
+                try:
+                    stats["resumes_missing"] = int(line.split(":")[-1].strip())
+                except:
+                    pass
+            elif "Skills imported:" in line:
+                try:
+                    stats["skills_imported"] = int(line.split(":")[-1].strip())
+                except:
+                    pass
+            elif "Errors:" in line:
+                try:
+                    stats["errors"] = int(line.split(":")[-1].strip())
+                except:
+                    pass
+
+        return {
+            "success": result.returncode == 0,
+            "message": "Import completed" if result.returncode == 0 else "Import failed",
+            "stats": stats,
+            "output": output[:5000],  # Limit output size
+        }
+
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=504,
+            detail="Import script timed out after 5 minutes"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to run import script: {str(e)}"
+        )

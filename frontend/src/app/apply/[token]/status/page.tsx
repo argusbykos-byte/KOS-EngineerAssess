@@ -519,9 +519,38 @@ export default function ApplicationStatusPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
-                  navigator.clipboard.writeText(window.location.href);
-                  alert("Link copied to clipboard!");
+                onClick={async () => {
+                  const url = window.location.href;
+                  let copied = false;
+                  // Try navigator.clipboard first
+                  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+                    try {
+                      await navigator.clipboard.writeText(url);
+                      copied = true;
+                    } catch (err) {
+                      console.warn("navigator.clipboard.writeText failed:", err);
+                    }
+                  }
+                  // Fallback: execCommand
+                  if (!copied) {
+                    try {
+                      const textArea = document.createElement("textarea");
+                      textArea.value = url;
+                      textArea.style.position = "fixed";
+                      textArea.style.left = "-999999px";
+                      document.body.appendChild(textArea);
+                      textArea.select();
+                      copied = document.execCommand("copy");
+                      document.body.removeChild(textArea);
+                    } catch (err) {
+                      console.warn("execCommand copy failed:", err);
+                    }
+                  }
+                  if (copied) {
+                    alert("Link copied to clipboard!");
+                  } else {
+                    window.prompt("Copy this link manually:", url);
+                  }
                 }}
               >
                 <ExternalLink className="w-4 h-4 mr-2" />

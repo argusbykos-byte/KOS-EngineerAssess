@@ -13,12 +13,23 @@ class TestStatus(str, enum.Enum):
     EXPIRED = "expired"
 
 
+class TestType(str, enum.Enum):
+    STANDARD = "standard"
+    SPECIALIZATION = "specialization"
+    COMPETITION = "competition"
+
+
 class Test(Base):
     __tablename__ = "tests"
 
     id = Column(Integer, primary_key=True, index=True)
     candidate_id = Column(Integer, ForeignKey("candidates.id"), nullable=False)
     access_token = Column(String(255), unique=True, nullable=False, index=True)
+
+    # Test type and specialization
+    test_type = Column(String(50), default=TestType.STANDARD.value)  # standard, specialization, competition
+    specialization_focus = Column(String(100), nullable=True)  # e.g., "reinforcement_learning", "computer_vision"
+    parent_test_id = Column(Integer, ForeignKey("tests.id"), nullable=True)  # Link to previous standard test
 
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime, nullable=True)
@@ -74,3 +85,7 @@ class Test(Base):
     )
     competition_registration = relationship("CompetitionRegistration", back_populates="test", uselist=False)
     behavioral_metrics = relationship("BehavioralMetrics", back_populates="test", uselist=False)
+    specialization_result = relationship("SpecializationResult", back_populates="test", uselist=False, cascade="all, delete-orphan")
+
+    # Self-referential relationship for specialization tests
+    parent_test = relationship("Test", remote_side=[id], foreign_keys=[parent_test_id], backref="child_tests")

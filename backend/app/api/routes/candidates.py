@@ -48,7 +48,11 @@ async def list_candidates(
                 "start_time": test.start_time,
                 "end_time": test.end_time,
                 "overall_score": test.report.overall_score if test.report else None,
-                "created_at": test.created_at
+                "created_at": test.created_at,
+                # Disqualification info for admin dashboard
+                "is_disqualified": test.is_disqualified or False,
+                "disqualification_reason": test.disqualification_reason,
+                "disqualified_at": test.disqualified_at
             })
 
         response.append(CandidateWithTests(
@@ -174,7 +178,11 @@ async def get_candidate(candidate_id: int, db: AsyncSession = Depends(get_db)):
             "start_time": test.start_time,
             "end_time": test.end_time,
             "overall_score": test.report.overall_score if test.report else None,
-            "created_at": test.created_at
+            "created_at": test.created_at,
+            # Disqualification info for admin dashboard
+            "is_disqualified": test.is_disqualified or False,
+            "disqualification_reason": test.disqualification_reason,
+            "disqualified_at": test.disqualified_at
         })
 
     return CandidateWithTests(

@@ -549,9 +549,38 @@ export default function SuggestionsPage() {
                 {selectedSuggestion.claude_code_command}
               </pre>
               <Button
-                onClick={() => {
-                  navigator.clipboard.writeText(selectedSuggestion.claude_code_command || "");
-                  alert("Copied to clipboard!");
+                onClick={async () => {
+                  const text = selectedSuggestion.claude_code_command || "";
+                  let copied = false;
+                  // Try navigator.clipboard first
+                  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+                    try {
+                      await navigator.clipboard.writeText(text);
+                      copied = true;
+                    } catch (err) {
+                      console.warn("navigator.clipboard.writeText failed:", err);
+                    }
+                  }
+                  // Fallback: execCommand
+                  if (!copied) {
+                    try {
+                      const textArea = document.createElement("textarea");
+                      textArea.value = text;
+                      textArea.style.position = "fixed";
+                      textArea.style.left = "-999999px";
+                      document.body.appendChild(textArea);
+                      textArea.select();
+                      copied = document.execCommand("copy");
+                      document.body.removeChild(textArea);
+                    } catch (err) {
+                      console.warn("execCommand copy failed:", err);
+                    }
+                  }
+                  if (copied) {
+                    alert("Copied to clipboard!");
+                  } else {
+                    window.prompt("Copy this command manually:", text);
+                  }
                 }}
               >
                 Copy to Clipboard

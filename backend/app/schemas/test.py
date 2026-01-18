@@ -24,6 +24,10 @@ class TestResponse(BaseModel):
     current_section: Optional[str] = None
     created_at: datetime
 
+    # Test type (standard, specialization, competition)
+    test_type: str = "standard"
+    specialization_focus: Optional[str] = None
+
     # Break info
     total_break_time_seconds: int = 0
     used_break_time_seconds: int = 0

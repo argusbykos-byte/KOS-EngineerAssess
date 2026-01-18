@@ -23,6 +23,13 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Loader2,
   Search,
   ChevronLeft,
@@ -33,6 +40,7 @@ import {
   User,
   RefreshCw,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { formatPacificDate } from "@/lib/utils";
 
@@ -109,6 +117,22 @@ export default function ApplicationsPage() {
   // Delete state
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
+  // Import state
+  const [importing, setImporting] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    success: boolean;
+    message: string;
+    stats: {
+      new_candidates: number;
+      updated_candidates: number;
+      resumes_matched: number;
+      resumes_missing: number;
+      skills_imported: number;
+      errors: number;
+    };
+  } | null>(null);
+
   // Fetch applications
   const fetchApplications = async () => {
     setLoading(true);
@@ -132,6 +156,35 @@ export default function ApplicationsPage() {
       console.error("Error fetching applications:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handle import from Excel
+  const handleImport = async () => {
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const response = await applicationsApi.importFromExcel();
+      setImportResult(response.data);
+      if (response.data.success) {
+        fetchApplications();
+      }
+    } catch (error) {
+      console.error("Error importing candidates:", error);
+      setImportResult({
+        success: false,
+        message: "Failed to import candidates. Check server logs.",
+        stats: {
+          new_candidates: 0,
+          updated_candidates: 0,
+          resumes_matched: 0,
+          resumes_missing: 0,
+          skills_imported: 0,
+          errors: 1,
+        },
+      });
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -211,11 +264,84 @@ export default function ApplicationsPage() {
             Review and manage incoming job applications
           </p>
         </div>
-        <Button variant="outline" onClick={fetchApplications} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="default"
+            onClick={() => setImportDialogOpen(true)}
+            disabled={importing}
+          >
+            <Upload className="w-4 h-4 mr-2" />
+            Import Candidates
+          </Button>
+          <Button variant="outline" onClick={fetchApplications} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
+
+      {/* Import Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Import Candidates from Excel</DialogTitle>
+            <DialogDescription>
+              Import candidates from the KOS Engineering Trial Day Application Form Excel file.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              This will import candidates from:
+            </p>
+            <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+              <li>~/Downloads/Kos Engineering Trial Day Application Form (Responses).xlsx</li>
+              <li>Resumes from ~/Downloads/Resume Trail Stanfor Engineers/</li>
+            </ul>
+
+            {importResult && (
+              <div className={`p-4 rounded-lg ${importResult.success ? "bg-green-500/10 border border-green-500/30" : "bg-red-500/10 border border-red-500/30"}`}>
+                <p className={`font-medium ${importResult.success ? "text-green-500" : "text-red-500"}`}>
+                  {importResult.message}
+                </p>
+                <div className="mt-2 text-sm space-y-1">
+                  <p>New candidates: {importResult.stats.new_candidates}</p>
+                  <p>Updated candidates: {importResult.stats.updated_candidates}</p>
+                  <p>Resumes matched: {importResult.stats.resumes_matched}</p>
+                  <p>Resumes missing: {importResult.stats.resumes_missing}</p>
+                  <p>Skills imported: {importResult.stats.skills_imported}</p>
+                  {importResult.stats.errors > 0 && (
+                    <p className="text-red-500">Errors: {importResult.stats.errors}</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setImportDialogOpen(false);
+                  setImportResult(null);
+                }}
+              >
+                {importResult ? "Close" : "Cancel"}
+              </Button>
+              {!importResult && (
+                <Button onClick={handleImport} disabled={importing}>
+                  {importing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    "Start Import"
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
