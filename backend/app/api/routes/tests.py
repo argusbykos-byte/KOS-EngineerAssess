@@ -11,6 +11,7 @@ import asyncio
 from app.database import get_db
 from app.models import Candidate, Test, Question, Answer, Report
 from app.models.test import TestStatus
+from app.models.application import Application, ApplicationStatus
 from app.schemas.test import (
     TestCreate, TestResponse, TestWithQuestions,
     BreakStartResponse, BreakEndResponse, BreakHistoryEntry
@@ -253,13 +254,20 @@ async def get_test(test_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.delete("/{test_id}")
 async def delete_test(test_id: int, db: AsyncSession = Depends(get_db)):
-    """Delete a test and all associated data (answers, questions, reports)."""
+    """Delete a test and all associated data (answers, questions, reports).
+
+    Also resets the related application's status back to skills_assessment
+    if it was test_generated or test_in_progress.
+    """
     # Check if test exists
     result = await db.execute(select(Test).where(Test.id == test_id))
     test = result.scalar_one_or_none()
 
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
+
+    # Store candidate_id before deletion for application update
+    candidate_id = test.candidate_id
 
     # Get all question IDs for this test
     questions_result = await db.execute(
@@ -285,9 +293,28 @@ async def delete_test(test_id: int, db: AsyncSession = Depends(get_db)):
 
     # Delete the test itself
     await db.delete(test)
+
+    # Update related application status back to skills_assessment
+    application_updated = False
+    if candidate_id:
+        app_result = await db.execute(
+            select(Application).where(Application.candidate_id == candidate_id)
+        )
+        application = app_result.scalar_one_or_none()
+        if application and application.status in [
+            ApplicationStatus.TEST_GENERATED,
+            ApplicationStatus.TEST_IN_PROGRESS
+        ]:
+            application.status = ApplicationStatus.SKILLS_ASSESSMENT
+            application_updated = True
+
     await db.commit()
 
-    return {"success": True, "message": f"Test {test_id} and all associated data deleted"}
+    message = f"Test {test_id} and all associated data deleted"
+    if application_updated:
+        message += ". Application status reset to skills_assessment."
+
+    return {"success": True, "message": message}
 
 
 @router.post("/{test_id}/reset-tab-switches")
