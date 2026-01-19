@@ -748,32 +748,32 @@ export default function ApplicationDetailPage() {
                   <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
                     <p className="text-xs text-muted-foreground mb-1">Best Position Fit</p>
                     <p className="text-lg font-bold text-primary">
-                      {(application.kimi_analysis as Record<string, unknown>).best_position as string || "N/A"}
+                      {String((application.kimi_analysis as Record<string, unknown>).best_position || "N/A")}
                     </p>
                   </div>
                   <div className="p-4 rounded-lg bg-muted/50">
                     <p className="text-xs text-muted-foreground mb-1">Fit Score</p>
                     <div className="flex items-center gap-2">
                       <span className={`text-2xl font-bold ${
-                        ((application.kimi_analysis as Record<string, unknown>).fit_score as number || 0) >= 70 ? "text-green-500" :
-                        ((application.kimi_analysis as Record<string, unknown>).fit_score as number || 0) >= 50 ? "text-yellow-500" : "text-red-500"
+                        (Number((application.kimi_analysis as Record<string, unknown>).fit_score) || 0) >= 70 ? "text-green-500" :
+                        (Number((application.kimi_analysis as Record<string, unknown>).fit_score) || 0) >= 50 ? "text-yellow-500" : "text-red-500"
                       }`}>
-                        {(application.kimi_analysis as Record<string, unknown>).fit_score as number || 0}%
+                        {Number((application.kimi_analysis as Record<string, unknown>).fit_score) || 0}%
                       </span>
                     </div>
                     <Progress
-                      value={(application.kimi_analysis as Record<string, unknown>).fit_score as number || 0}
+                      value={Number((application.kimi_analysis as Record<string, unknown>).fit_score) || 0}
                       className="h-2 mt-2"
                     />
                   </div>
                 </div>
 
                 {/* Overall Assessment */}
-                {(application.kimi_analysis as Record<string, unknown>).overall_assessment && (
+                {typeof (application.kimi_analysis as Record<string, unknown>).overall_assessment === 'string' && (
                   <div className="p-4 rounded-lg bg-muted/30 border">
                     <p className="text-xs text-muted-foreground mb-2">Overall Assessment</p>
                     <p className="text-sm">
-                      {(application.kimi_analysis as Record<string, unknown>).overall_assessment as string}
+                      {String((application.kimi_analysis as Record<string, unknown>).overall_assessment)}
                     </p>
                   </div>
                 )}

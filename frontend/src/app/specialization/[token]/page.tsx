@@ -35,8 +35,14 @@ import {
   ChevronRight,
   Trophy,
   Zap,
+  Eye,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { useAntiCheat } from "@/hooks/useAntiCheat";
+import {
+  AntiCheatWarningModal,
+  DisqualificationModal,
+} from "@/components/test/AntiCheatWarningModal";
 
 type ViewState = "loading" | "welcome" | "test" | "completed" | "expired" | "error";
 
@@ -111,6 +117,26 @@ export default function SpecializationTestPage() {
   // Complete test confirmation
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
 
+  // Anti-cheat state
+  const [showAntiCheatWarning, setShowAntiCheatWarning] = useState(false);
+  const [warningData, setWarningData] = useState({ warningCount: 0, violationScore: 0 });
+  const [showDisqualification, setShowDisqualification] = useState(false);
+  const [disqualificationReason, setDisqualificationReason] = useState("");
+
+  // Enhanced anti-cheat hook
+  const antiCheat = useAntiCheat({
+    token,
+    isActive: viewState === "test",
+    onWarning: (warningCount, violationScore) => {
+      setWarningData({ warningCount, violationScore });
+      setShowAntiCheatWarning(true);
+    },
+    onDisqualification: (reason) => {
+      setDisqualificationReason(reason);
+      setShowDisqualification(true);
+    },
+  });
+
   // Answer states (local storage for persistence)
   const answersRef = useRef<Map<number, { answer: string; code: string }>>(new Map());
   const [answerStates, setAnswerStates] = useState<Map<number, { answer: string; code: string }>>(new Map());
@@ -122,9 +148,20 @@ export default function SpecializationTestPage() {
       const testData = response.data;
 
       // Validate this is a specialization test
-      if (testData.test_type !== "specialization") {
+      // Check either test_type is "specialization" OR specialization_focus is set
+      if (testData.test_type !== "specialization" && !testData.specialization_focus) {
         setError("Invalid test type. This link is for specialization tests only.");
         setViewState("error");
+        return;
+      }
+
+      // Check for disqualification - block everything if disqualified
+      if (testData.is_disqualified) {
+        setDisqualificationReason(
+          testData.disqualification_reason || "Your assessment was terminated due to integrity violations."
+        );
+        setShowDisqualification(true);
+        setViewState("test"); // Keep in test view but modal will block everything
         return;
       }
 
@@ -195,24 +232,24 @@ export default function SpecializationTestPage() {
     }
   };
 
-  // Save answer locally and to server
+  // Save answer locally and to server (draft only - no AI evaluation)
   const handleAnswerChange = useCallback(
     async (questionId: number, answer: string, code: string) => {
       // Update local state
       answersRef.current.set(questionId, { answer, code });
       setAnswerStates(new Map(answersRef.current));
 
-      // Save to server (debounced)
+      // Save draft to server (no AI evaluation - just saves content)
       setSyncStatus("syncing");
       try {
-        await answersApi.submit({
+        await answersApi.saveDraft({
           question_id: questionId,
           candidate_answer: answer,
           candidate_code: code,
         });
         setSyncStatus("synced");
       } catch (err) {
-        console.error("Error saving answer:", err);
+        console.error("Error saving draft:", err);
         setSyncStatus("error");
       }
     },
@@ -252,8 +289,22 @@ export default function SpecializationTestPage() {
     if (!test) return;
     setIsSubmittingAll(true);
     try {
+      // First, batch submit all answers for AI evaluation
+      const answersToSubmit = Array.from(answersRef.current.entries()).map(
+        ([questionId, { answer, code }]) => ({
+          question_id: questionId,
+          candidate_answer: answer,
+          candidate_code: code,
+        })
+      );
+
+      if (answersToSubmit.length > 0) {
+        await answersApi.batchSubmit(answersToSubmit);
+      }
+
+      // Then complete the test
       await testsApi.complete(token);
-      // Trigger analysis
+      // Trigger specialization analysis
       await specializationApi.analyze(test.id);
       setViewState("completed");
     } catch (err) {
@@ -463,6 +514,20 @@ export default function SpecializationTestPage() {
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-background to-muted">
+        {/* Anti-Cheat Warning Modal */}
+        <AntiCheatWarningModal
+          isOpen={showAntiCheatWarning}
+          onClose={() => setShowAntiCheatWarning(false)}
+          warningCount={warningData.warningCount}
+          violationScore={warningData.violationScore}
+        />
+
+        {/* Disqualification Modal */}
+        <DisqualificationModal
+          isOpen={showDisqualification}
+          reason={disqualificationReason}
+        />
+
         {/* Header */}
         <header className={`sticky top-0 z-50 bg-gradient-to-r ${getFocusAreaColor(test.specialization_focus)} text-white shadow-lg`}>
           <div className="container mx-auto px-4 py-3">
@@ -476,6 +541,14 @@ export default function SpecializationTestPage() {
               </div>
 
               <div className="flex items-center gap-6">
+                {/* Violation Counter */}
+                {antiCheat.tabSwitchCount > 0 && (
+                  <Badge variant="destructive" className="text-xs">
+                    <Eye className="w-3 h-3 mr-1" />
+                    {antiCheat.tabSwitchCount} violations
+                  </Badge>
+                )}
+
                 {/* Sync Status */}
                 <div className="flex items-center gap-2 text-sm">
                   {syncStatus === "syncing" && (

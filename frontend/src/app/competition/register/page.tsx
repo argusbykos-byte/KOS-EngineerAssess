@@ -171,7 +171,7 @@ function RegisterContent() {
                     textArea.select();
                     document.execCommand("copy");
                     document.body.removeChild(textArea);
-                  } catch (err) {
+                  } catch {
                     window.prompt("Copy this link manually:", fullUrl);
                   }
                 }}

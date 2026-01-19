@@ -689,12 +689,12 @@ async def submit_screening_test(
                 category=question.category,
                 difficulty="mid"
             )
-            answer.score = evaluation.get("score", 50)
+            answer.score = evaluation.get("score", 0)
             answer.feedback = evaluation.get("feedback", "")
             answer.ai_evaluation = str(evaluation)
             answer.evaluated_at = datetime.utcnow()
         except Exception:
-            answer.score = 50  # Default score if AI fails
+            answer.score = 0  # Default score if AI fails (don't give unearned points)
 
         total_score += answer.score
         questions_answered += 1

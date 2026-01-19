@@ -156,6 +156,26 @@ export function getQuestRecommendationBadge(recommendation: string | null): {
 // ============================================================================
 
 /**
+ * Simple date formatting function for compatibility with existing local implementations.
+ * Formats a date string to a readable format.
+ *
+ * @param dateString - ISO string or date string to format
+ * @returns Formatted date string like "Jan 15, 2026" or empty string if invalid
+ */
+export function formatDate(dateString: string | null | undefined): string {
+  if (!dateString) return "";
+  try {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
+}
+
+/**
  * KOS headquarters timezone - America/Los_Angeles (Pacific Time)
  * All user-facing dates should be displayed in this timezone.
  */

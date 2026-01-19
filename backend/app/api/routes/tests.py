@@ -523,6 +523,19 @@ async def get_test_by_token(access_token: str, db: AsyncSession = Depends(get_db
     if not test:
         raise HTTPException(status_code=404, detail="Test not found")
 
+    # Check if test is already completed, expired, or candidate is disqualified
+    # Prevent retaking completed/expired tests
+    if test.status == TestStatus.COMPLETED.value:
+        raise HTTPException(
+            status_code=403,
+            detail="This test has already been completed and cannot be retaken."
+        )
+    if test.is_disqualified:
+        raise HTTPException(
+            status_code=403,
+            detail=f"This test has been terminated: {test.disqualification_reason or 'Integrity violation'}"
+        )
+
     # Check if test is expired (account for break time - breaks pause the test)
     if test.status in [TestStatus.IN_PROGRESS.value, TestStatus.ON_BREAK.value] and test.start_time:
         # Effective end time = start + duration + used break time

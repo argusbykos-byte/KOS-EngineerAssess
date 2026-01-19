@@ -111,7 +111,6 @@ export default function SkillsAssessmentPage() {
     new Set(["technical"])
   );
   const [totalSkills, setTotalSkills] = useState(0);
-  const [completedSkills, setCompletedSkills] = useState(0);
 
   // Load skills form
   useEffect(() => {
@@ -125,7 +124,6 @@ export default function SkillsAssessmentPage() {
         const skillsRes = await applicationsApi.getSkillsForm(token);
         setCategories(skillsRes.data.categories);
         setTotalSkills(skillsRes.data.total_skills);
-        setCompletedSkills(skillsRes.data.completed_skills);
 
         // Initialize ratings from existing data
         const existingRatings: Record<string, number> = {};
@@ -168,15 +166,7 @@ export default function SkillsAssessmentPage() {
   const updateRating = useCallback((category: string, skillName: string, rating: number) => {
     const key = `${category}:${skillName}`;
     setRatings((prev) => {
-      const wasRated = prev[key] !== undefined;
-      const newRatings = { ...prev, [key]: rating };
-
-      // Update completed count
-      if (!wasRated) {
-        setCompletedSkills((c) => c + 1);
-      }
-
-      return newRatings;
+      return { ...prev, [key]: rating };
     });
   }, []);
 

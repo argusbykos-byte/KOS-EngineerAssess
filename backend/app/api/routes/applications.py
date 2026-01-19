@@ -773,13 +773,13 @@ async def get_application_admin(
     total_skills = sum(len(skills) for skills in SKILL_CATEGORIES.values())
     completed_skills = len([s for s in application.skill_assessments if s.self_rating is not None])
 
-    # Fetch test access token if candidate exists
+    # Fetch test access token if candidate exists (get most recent test)
     test_access_token = None
     if application.candidate_id:
         test_result = await db.execute(
             select(Test).where(Test.candidate_id == application.candidate_id).order_by(Test.created_at.desc())
         )
-        test = test_result.scalar_one_or_none()
+        test = test_result.scalars().first()  # Use first() since candidates can have multiple tests
         if test:
             test_access_token = test.access_token
 
