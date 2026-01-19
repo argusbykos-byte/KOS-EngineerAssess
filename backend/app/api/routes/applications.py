@@ -773,15 +773,40 @@ async def get_application_admin(
     total_skills = sum(len(skills) for skills in SKILL_CATEGORIES.values())
     completed_skills = len([s for s in application.skill_assessments if s.self_rating is not None])
 
-    # Fetch test access token if candidate exists (get most recent test)
+    # Fetch ALL tests for this candidate (ordered by most recent first)
     test_access_token = None
+    tests_list = []
     if application.candidate_id:
+        from app.models.report import Report  # Import here to avoid circular imports
+
         test_result = await db.execute(
             select(Test).where(Test.candidate_id == application.candidate_id).order_by(Test.created_at.desc())
         )
-        test = test_result.scalars().first()  # Use first() since candidates can have multiple tests
-        if test:
-            test_access_token = test.access_token
+        all_tests = test_result.scalars().all()
+
+        for t in all_tests:
+            # Check if test has a report
+            report_result = await db.execute(
+                select(Report.id).where(Report.test_id == t.id)
+            )
+            has_report = report_result.scalar_one_or_none() is not None
+
+            tests_list.append({
+                "id": t.id,
+                "access_token": t.access_token,
+                "status": t.status,
+                "test_type": t.test_type,
+                "specialization_focus": t.specialization_focus,
+                "created_at": t.created_at,
+                "start_time": t.start_time,
+                "end_time": t.end_time,
+                "overall_score": None,  # Will be filled from report if exists
+                "has_report": has_report,
+            })
+
+        # Set test_access_token to most recent test for backward compatibility
+        if all_tests:
+            test_access_token = all_tests[0].access_token
 
     return ApplicationAdminResponse(
         id=application.id,
@@ -815,6 +840,7 @@ async def get_application_admin(
         reviewed_at=application.reviewed_at,
         candidate_id=application.candidate_id,
         test_access_token=test_access_token,
+        tests=tests_list,
         skill_assessments=[
             SkillAssessmentResponse(
                 id=s.id,

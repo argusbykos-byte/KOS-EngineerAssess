@@ -191,9 +191,33 @@ export default function SpecializationTestPage() {
       }
     } catch (err: unknown) {
       console.error("Error fetching test:", err);
-      const errorMessage = err instanceof Error ? err.message : "Failed to load test";
-      setError(errorMessage);
-      setViewState("error");
+
+      // Check for specific HTTP error codes (like regular test page)
+      const axiosError = err as { response?: { status?: number; data?: { detail?: string } } };
+      const status = axiosError.response?.status;
+      const detail = axiosError.response?.data?.detail || "";
+
+      if (status === 403) {
+        // Test is completed, expired, or disqualified
+        if (detail.includes("completed")) {
+          setError("This test has already been completed and cannot be retaken.");
+          setViewState("completed");
+        } else if (detail.includes("terminated") || detail.includes("disqualified")) {
+          setDisqualificationReason(detail);
+          setShowDisqualification(true);
+          setViewState("error");
+        } else {
+          setError(detail || "Access to this test is not allowed.");
+          setViewState("error");
+        }
+      } else if (status === 404) {
+        setError("Test not found. Please check your link.");
+        setViewState("error");
+      } else {
+        const errorMessage = err instanceof Error ? err.message : "Failed to load test";
+        setError(errorMessage);
+        setViewState("error");
+      }
     }
   }, [token]);
 
@@ -815,5 +839,30 @@ export default function SpecializationTestPage() {
     );
   }
 
-  return null;
+  // Fallback for unexpected states - show loading or error
+  console.warn("SpecializationTest: Unexpected state", { viewState, hasTest: !!test, hasQuestions: test?.questions?.length });
+
+  // If viewState is test but questions are missing, show error
+  if (viewState === "test" && (!test || !test.questions || test.questions.length === 0)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Card className="max-w-md">
+          <CardContent className="pt-6 text-center">
+            <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-4" />
+            <h2 className="text-xl font-bold mb-2">No Questions Found</h2>
+            <p className="text-muted-foreground">
+              This test doesn&apos;t have any questions yet. Please contact the administrator.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Default fallback - show loading
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <Loader2 className="w-12 h-12 animate-spin text-primary" />
+    </div>
+  );
 }

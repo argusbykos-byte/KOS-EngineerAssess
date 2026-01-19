@@ -158,6 +158,20 @@ class ApplicationDetailResponse(ApplicationResponse):
     skill_assessments: List[SkillAssessmentResponse] = []
 
 
+class CandidateTestSummary(BaseModel):
+    """Summary of a test for admin view"""
+    id: int
+    access_token: str
+    status: str
+    test_type: Optional[str] = None
+    specialization_focus: Optional[str] = None
+    created_at: datetime
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    overall_score: Optional[float] = None
+    has_report: bool = False
+
+
 class ApplicationAdminResponse(ApplicationDetailResponse):
     """Admin view with all fields including internal data"""
     kimi_analysis: Optional[Dict[str, Any]] = None
@@ -165,7 +179,8 @@ class ApplicationAdminResponse(ApplicationDetailResponse):
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     candidate_id: Optional[int] = None
-    test_access_token: Optional[str] = None  # Access token for the candidate's test
+    test_access_token: Optional[str] = None  # Access token for the most recent test (backward compat)
+    tests: List[CandidateTestSummary] = []  # All tests for this candidate
 
 
 class ApplicationSubmitResponse(BaseModel):

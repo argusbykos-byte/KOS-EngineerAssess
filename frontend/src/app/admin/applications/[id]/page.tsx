@@ -66,6 +66,10 @@ import {
   BookOpen,
   Layers,
   Target,
+  Copy,
+  Check,
+  ClipboardList,
+  Eye,
 } from "lucide-react";
 import { formatPacificDate } from "@/lib/utils";
 
@@ -155,6 +159,19 @@ interface SkillAssessment {
   created_at: string;
 }
 
+interface CandidateTestSummary {
+  id: number;
+  access_token: string;
+  status: string;
+  test_type: string | null;
+  specialization_focus: string | null;
+  created_at: string;
+  start_time: string | null;
+  end_time: string | null;
+  overall_score: number | null;
+  has_report: boolean;
+}
+
 interface ApplicationDetail {
   id: number;
   full_name: string;
@@ -187,6 +204,7 @@ interface ApplicationDetail {
   reviewed_at: string | null;
   candidate_id: number | null;
   test_access_token: string | null;
+  tests: CandidateTestSummary[];
   skill_assessments: SkillAssessment[];
 }
 
@@ -220,6 +238,9 @@ export default function ApplicationDetailPage() {
   const [specFocusArea, setSpecFocusArea] = useState("ml");
   const [specDuration, setSpecDuration] = useState(60);
   const [generatingSpec, setGeneratingSpec] = useState(false);
+
+  // Copy test link state
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [focusAreas, setFocusAreas] = useState<Array<{
     id: string;
     name: string;
@@ -319,6 +340,16 @@ export default function ApplicationDetailPage() {
     if (rating >= 6) return "text-blue-500";
     if (rating >= 4) return "text-yellow-500";
     return "text-red-500";
+  };
+
+  // Copy test link to clipboard
+  const copyTestLink = (accessToken: string, testType?: string) => {
+    const baseUrl = window.location.origin;
+    const path = testType === "specialization" ? "specialization" : "test";
+    const link = `${baseUrl}/${path}/${accessToken}`;
+    navigator.clipboard.writeText(link);
+    setCopiedToken(accessToken);
+    setTimeout(() => setCopiedToken(null), 2000);
   };
 
   // Handle save
@@ -935,18 +966,136 @@ export default function ApplicationDetailPage() {
                       View Candidate
                     </Button>
                   </Link>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => setSpecDialogOpen(true)}
-                  >
-                    <Target className="w-4 h-4 mr-2" />
-                    Generate Specialization Test
-                  </Button>
+
+                  {/* Check if there's an active test */}
+                  {(() => {
+                    const activeTest = application.tests?.find(
+                      (t) => t.status === "pending" || t.status === "in_progress"
+                    );
+                    if (activeTest) {
+                      return (
+                        <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-sm">
+                          <p className="text-amber-500 font-medium mb-2">
+                            Active test exists ({activeTest.status})
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => copyTestLink(activeTest.access_token, activeTest.specialization_focus ? "specialization" : undefined)}
+                          >
+                            {copiedToken === activeTest.access_token ? (
+                              <>
+                                <Check className="w-3 h-3 mr-1" />
+                                Copied!
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3 mr-1" />
+                                Copy Test Link
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      );
+                    }
+                    return (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setSpecDialogOpen(true)}
+                      >
+                        <Target className="w-4 h-4 mr-2" />
+                        Generate Specialization Test
+                      </Button>
+                    );
+                  })()}
                 </>
               )}
             </CardContent>
           </Card>
+
+          {/* Tests Card - Shows all tests for this candidate */}
+          {application.tests && application.tests.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ClipboardList className="w-5 h-5" />
+                  Tests ({application.tests.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {application.tests.map((test) => (
+                  <div
+                    key={test.id}
+                    className="p-3 rounded-lg border bg-muted/30 space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={
+                            test.status === "completed"
+                              ? "bg-green-500/20 text-green-500 border-green-500/30"
+                              : test.status === "in_progress"
+                              ? "bg-amber-500/20 text-amber-500 border-amber-500/30"
+                              : test.status === "pending"
+                              ? "bg-gray-500/20 text-gray-400 border-gray-500/30"
+                              : "bg-red-500/20 text-red-500 border-red-500/30"
+                          }
+                        >
+                          {test.status}
+                        </Badge>
+                        {test.specialization_focus && (
+                          <Badge variant="outline" className="bg-primary/20 text-primary">
+                            {test.specialization_focus}
+                          </Badge>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        #{test.id}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      Created: {formatPacificDate(test.created_at)}
+                    </p>
+
+                    <div className="flex gap-2">
+                      {(test.status === "pending" || test.status === "in_progress") && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => copyTestLink(test.access_token, test.specialization_focus ? "specialization" : undefined)}
+                        >
+                          {copiedToken === test.access_token ? (
+                            <>
+                              <Check className="w-3 h-3 mr-1" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3 mr-1" />
+                              Copy Link
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      {test.has_report && (
+                        <Link href={`/admin/reports/${test.id}`} className="flex-1">
+                          <Button size="sm" variant="outline" className="w-full">
+                            <Eye className="w-3 h-3 mr-1" />
+                            View Report
+                          </Button>
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Status & Notes Card */}
           <Card>

@@ -359,10 +359,34 @@ export default function TestPage() {
         // Clear persisted state on expiry
         clearTestState();
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Error fetching test:", err);
-      setError("Test not found or invalid link");
-      setViewState("error");
+
+      // Check for specific HTTP error codes
+      const axiosError = err as { response?: { status?: number; data?: { detail?: string } } };
+      const status = axiosError.response?.status;
+      const detail = axiosError.response?.data?.detail || "";
+
+      if (status === 403) {
+        // Test is completed, expired, or disqualified
+        if (detail.includes("completed")) {
+          setError("This test has already been completed and cannot be retaken.");
+          setViewState("completed");
+        } else if (detail.includes("terminated") || detail.includes("disqualified")) {
+          setDisqualificationReason(detail);
+          setShowDisqualification(true);
+          setViewState("error");
+        } else {
+          setError(detail || "Access to this test is not allowed.");
+          setViewState("error");
+        }
+      } else if (status === 404) {
+        setError("Test not found. Please check your link.");
+        setViewState("error");
+      } else {
+        setError("Unable to load test. Please try again later.");
+        setViewState("error");
+      }
     }
   }, [token, currentSection, saveTestState, clearTestState, breakStartTime]);
 
