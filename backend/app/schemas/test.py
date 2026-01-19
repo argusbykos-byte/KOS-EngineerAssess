@@ -66,6 +66,7 @@ class TestWithQuestions(TestResponse):
     categories: List[str]
     difficulty: str
     questions_by_section: dict  # category -> list of questions
+    questions: List[dict] = []  # Flat list of all questions (for specialization tests)
     time_remaining_seconds: Optional[int] = None
 
     # Break info for frontend

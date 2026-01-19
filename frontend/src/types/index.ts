@@ -54,6 +54,7 @@ export interface TestWithQuestions extends Test {
   categories: string[];
   difficulty: string;
   questions_by_section: Record<string, Question[]>;
+  questions?: Question[];  // Flat list of all questions (for specialization tests)
   time_remaining_seconds: number | null;
   // Break info
   total_break_time_seconds: number;

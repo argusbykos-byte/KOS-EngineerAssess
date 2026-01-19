@@ -603,6 +603,13 @@ async def get_test_by_token(access_token: str, db: AsyncSession = Depends(get_db
     for category in questions_by_section:
         questions_by_section[category].sort(key=lambda x: x["question_order"])
 
+    # Create flat questions list for specialization tests (and general use)
+    questions_flat = []
+    for category_questions in questions_by_section.values():
+        questions_flat.extend(category_questions)
+    # Sort by question_order for consistent ordering
+    questions_flat.sort(key=lambda x: x["question_order"])
+
     return TestWithQuestions(
         id=test.id,
         candidate_id=test.candidate_id,
@@ -621,6 +628,7 @@ async def get_test_by_token(access_token: str, db: AsyncSession = Depends(get_db
         categories=test.candidate.categories or [],
         difficulty=test.candidate.difficulty,
         questions_by_section=questions_by_section,
+        questions=questions_flat,  # Flat list for specialization tests
         time_remaining_seconds=time_remaining,
         # Break info
         total_break_time_seconds=test.total_break_time_seconds or total_break,
