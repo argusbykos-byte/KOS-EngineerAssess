@@ -777,6 +777,20 @@ export const applicationsApi = {
       };
       output: string;
     }>("/applications/admin/import"),
+
+  // Get application by email (for checking Kimi2 analysis)
+  getByEmail: (email: string) =>
+    api.get<{
+      id: number;
+      email: string;
+      has_kimi_analysis: boolean;
+      fit_score: number | null;
+      suggested_position: string | null;
+      motivation: string | null;
+      admired_engineers: string | null;
+      unique_trait: string | null;
+      overall_self_rating: number | null;
+    }>(`/applications/by-email/${encodeURIComponent(email)}`),
 };
 
 // Specialization Tests
@@ -795,6 +809,7 @@ export const specializationApi = {
     candidate_id: number;
     focus_area: string;
     duration_minutes?: number;
+    parent_test_id?: number;  // Optional: link to completed test for richer context
   }) =>
     testGenerationApi.post<{
       success: boolean;
@@ -840,6 +855,8 @@ export const specializationApi = {
     api.get<{
       items: Array<{
         id: number;
+        test_id: number;
+        access_token: string;
         candidate_id: number;
         candidate_name: string;
         focus_area: string;

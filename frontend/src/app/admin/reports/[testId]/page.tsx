@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { reportsApi, questionsApi, testsApi, specializationApi } from "@/lib/api";
+import { reportsApi, questionsApi, testsApi, specializationApi, applicationsApi } from "@/lib/api";
 import { Report, Question, Test } from "@/types";
 import {
   Card,
@@ -113,6 +113,10 @@ export default function ReportDetailPage() {
   const [generatingSpecTest, setGeneratingSpecTest] = useState(false);
   const [specTestResult, setSpecTestResult] = useState<{testId: number; accessToken: string} | null>(null);
 
+  // Application data for Kimi2 analysis check
+  const [hasKimiAnalysis, setHasKimiAnalysis] = useState<boolean | null>(null);
+  const [applicationFitScore, setApplicationFitScore] = useState<number | null>(null);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -149,6 +153,18 @@ export default function ReportDetailPage() {
           console.log("Role fit recommendations not available");
         } finally {
           setRoleFitLoading(false);
+        }
+
+        // Fetch application data to check for Kimi2 analysis
+        if (reportRes.data.candidate_email) {
+          try {
+            const appRes = await applicationsApi.getByEmail(reportRes.data.candidate_email);
+            setHasKimiAnalysis(appRes.data.has_kimi_analysis);
+            setApplicationFitScore(appRes.data.fit_score);
+          } catch {
+            // No application found for this candidate - that's OK, button will still work
+            setHasKimiAnalysis(null);
+          }
         }
       } catch (error) {
         console.error("Error fetching report:", error);
@@ -241,6 +257,7 @@ export default function ReportDetailPage() {
         candidate_id: testData.candidate_id,
         focus_area: selectedFocusArea,
         duration_minutes: 60,
+        parent_test_id: testId,  // Pass the test ID to fetch comprehensive context
       });
       if (res.data.success && res.data.test_id && res.data.access_token) {
         setSpecTestResult({
@@ -916,14 +933,44 @@ export default function ReportDetailPage() {
               Generate Certificate
             </Button>
           )}
-          <Button
-            variant="outline"
-            onClick={handleOpenSpecializationDialog}
-            className="gap-2"
-          >
-            <Zap className="w-4 h-4" />
-            Specialization Test
-          </Button>
+          {/* Specialization Test Button - conditionally rendered based on Kimi2 analysis */}
+          {hasKimiAnalysis === true ? (
+            <Button
+              variant="outline"
+              onClick={handleOpenSpecializationDialog}
+              className="gap-2"
+            >
+              <Zap className="w-4 h-4" />
+              Specialization Test
+              {applicationFitScore && (
+                <Badge variant="secondary" className="ml-1 text-xs">
+                  {applicationFitScore}% fit
+                </Badge>
+              )}
+            </Button>
+          ) : hasKimiAnalysis === false ? (
+            <Button
+              variant="outline"
+              className="gap-2"
+              disabled
+              title="Run Kimi2 Analysis on the Application first to enable specialization test generation"
+            >
+              <Zap className="w-4 h-4" />
+              Specialization Test
+              <Badge variant="outline" className="ml-1 text-xs text-amber-500 border-amber-500/50">
+                Requires Analysis
+              </Badge>
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={handleOpenSpecializationDialog}
+              className="gap-2"
+            >
+              <Zap className="w-4 h-4" />
+              Specialization Test
+            </Button>
+          )}
           {hasNdaSigned && (
             <Button
               variant="outline"
@@ -1465,6 +1512,11 @@ export default function ReportDetailPage() {
             </DialogTitle>
             <DialogDescription>
               Create a 1-hour deep-dive assessment to identify {report?.candidate_name}&apos;s exact sub-specialty.
+              {hasKimiAnalysis && (
+                <span className="block mt-1 text-xs text-green-600">
+                  Questions will be personalized using test scores, application data, and AI analysis.
+                </span>
+              )}
             </DialogDescription>
           </DialogHeader>
 

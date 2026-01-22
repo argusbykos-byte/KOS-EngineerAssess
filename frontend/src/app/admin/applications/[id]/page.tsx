@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { applicationsApi, specializationApi } from "@/lib/api";
+import { applicationsApi } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -65,7 +65,6 @@ import {
   Cpu,
   BookOpen,
   Layers,
-  Target,
   Copy,
   Check,
   ClipboardList,
@@ -233,20 +232,8 @@ export default function ApplicationDetailPage() {
   const [testDuration, setTestDuration] = useState(2);
   const [difficulty, setDifficulty] = useState("mid");
 
-  // Specialization test state
-  const [specDialogOpen, setSpecDialogOpen] = useState(false);
-  const [specFocusArea, setSpecFocusArea] = useState("ml");
-  const [specDuration, setSpecDuration] = useState(60);
-  const [generatingSpec, setGeneratingSpec] = useState(false);
-
   // Copy test link state
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
-  const [focusAreas, setFocusAreas] = useState<Array<{
-    id: string;
-    name: string;
-    description: string;
-    sub_specialties: string[];
-  }>>([]);
 
   // Expanded skill categories
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
@@ -272,19 +259,6 @@ export default function ApplicationDetailPage() {
 
     fetchApplication();
   }, [applicationId]);
-
-  // Fetch focus areas for specialization tests
-  useEffect(() => {
-    const fetchFocusAreas = async () => {
-      try {
-        const response = await specializationApi.getFocusAreas();
-        setFocusAreas(response.data);
-      } catch (error) {
-        console.error("Error fetching focus areas:", error);
-      }
-    };
-    fetchFocusAreas();
-  }, []);
 
   // Format date helper
   const formatDate = (dateStr: string | null) => {
@@ -416,36 +390,6 @@ export default function ApplicationDetailPage() {
       alert(error.response?.data?.detail || "Failed to create candidate");
     } finally {
       setCreatingCandidate(false);
-    }
-  };
-
-  // Handle generate specialization test
-  const handleGenerateSpecTest = async () => {
-    if (!application || !application.candidate_id) return;
-    setGeneratingSpec(true);
-
-    try {
-      const response = await specializationApi.generate({
-        candidate_id: application.candidate_id,
-        focus_area: specFocusArea,
-        duration_minutes: specDuration,
-      });
-
-      setSpecDialogOpen(false);
-
-      if (response.data.success) {
-        alert(
-          `Specialization test generated!\nTest ID: ${response.data.test_id}\nQuestions: ${response.data.questions_generated}\nAccess Token: ${response.data.access_token}`
-        );
-        router.push("/admin/specialization-results");
-      } else {
-        alert(response.data.message || "Failed to generate test");
-      }
-    } catch (err: unknown) {
-      const error = err as { response?: { data?: { detail?: string } } };
-      alert(error.response?.data?.detail || "Failed to generate specialization test");
-    } finally {
-      setGeneratingSpec(false);
     }
   };
 
@@ -999,16 +943,7 @@ export default function ApplicationDetailPage() {
                         </div>
                       );
                     }
-                    return (
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => setSpecDialogOpen(true)}
-                      >
-                        <Target className="w-4 h-4 mr-2" />
-                        Generate Specialization Test
-                      </Button>
-                    );
+                    return null;
                   })()}
                 </>
               )}
@@ -1329,103 +1264,6 @@ export default function ApplicationDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Specialization Test Dialog */}
-      <Dialog open={specDialogOpen} onOpenChange={setSpecDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Generate Specialization Test</DialogTitle>
-            <DialogDescription>
-              Create a 1-hour deep-dive test to identify {application.full_name}&apos;s
-              exact sub-specialty within their focus area.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Focus Area</Label>
-              <Select value={specFocusArea} onValueChange={setSpecFocusArea}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select focus area" />
-                </SelectTrigger>
-                <SelectContent>
-                  {focusAreas.map((area) => (
-                    <SelectItem key={area.id} value={area.id}>
-                      {area.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {focusAreas.find((a) => a.id === specFocusArea)?.description && (
-                <p className="text-sm text-muted-foreground">
-                  {focusAreas.find((a) => a.id === specFocusArea)?.description}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label>Duration</Label>
-              <Select
-                value={specDuration.toString()}
-                onValueChange={(v) => setSpecDuration(parseInt(v))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="30">30 minutes</SelectItem>
-                  <SelectItem value="60">60 minutes (Recommended)</SelectItem>
-                  <SelectItem value="90">90 minutes</SelectItem>
-                  <SelectItem value="120">120 minutes</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {focusAreas.find((a) => a.id === specFocusArea)?.sub_specialties && (
-              <div className="space-y-2">
-                <Label>Sub-specialties to identify</Label>
-                <div className="flex flex-wrap gap-1">
-                  {focusAreas
-                    .find((a) => a.id === specFocusArea)
-                    ?.sub_specialties.slice(0, 6)
-                    .map((ss) => (
-                      <Badge key={ss} variant="secondary" className="text-xs">
-                        {ss}
-                      </Badge>
-                    ))}
-                  {(focusAreas.find((a) => a.id === specFocusArea)?.sub_specialties
-                    .length || 0) > 6 && (
-                    <Badge variant="secondary" className="text-xs">
-                      +
-                      {(focusAreas.find((a) => a.id === specFocusArea)?.sub_specialties
-                        .length || 0) - 6}{" "}
-                      more
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSpecDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleGenerateSpecTest} disabled={generatingSpec}>
-              {generatingSpec ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <Target className="w-4 h-4 mr-2" />
-                  Generate Test
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

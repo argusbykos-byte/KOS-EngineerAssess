@@ -37,11 +37,14 @@ import {
   Users,
   Award,
   TrendingUp,
+  ExternalLink,
 } from "lucide-react";
 import { formatPacificDate } from "@/lib/utils";
 
 interface SpecializationResultItem {
   id: number;
+  test_id: number;
+  access_token: string;
   candidate_id: number;
   candidate_name: string;
   focus_area: string;
@@ -149,7 +152,8 @@ export default function SpecializationResultsPage() {
   const viewResultDetails = async (item: SpecializationResultItem) => {
     setDetailLoading(true);
     try {
-      const response = await specializationApi.getResults(item.id);
+      // Use test_id (not id) - the API is /specialization/{test_id}/results
+      const response = await specializationApi.getResults(item.test_id);
       setSelectedResult(response.data);
     } catch (error) {
       console.error("Error fetching result details:", error);
@@ -340,15 +344,37 @@ export default function SpecializationResultsPage() {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={
-                      result.status === "completed"
-                        ? "bg-green-500/20 text-green-500 border-green-500/30"
-                        : result.status === "in_progress"
-                        ? "bg-yellow-500/20 text-yellow-500 border-yellow-500/30"
-                        : "bg-gray-500/20 text-gray-500 border-gray-500/30"
-                    }>
-                      {result.status}
-                    </Badge>
+                    {result.status === "pending" || result.status === "in_progress" ? (
+                      <Badge
+                        variant="outline"
+                        className={`cursor-pointer hover:opacity-80 transition-opacity ${
+                          result.status === "in_progress"
+                            ? "bg-yellow-500/20 text-yellow-500 border-yellow-500/30 hover:bg-yellow-500/30"
+                            : "bg-gray-500/20 text-gray-500 border-gray-500/30 hover:bg-gray-500/30"
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(`/specialization/${result.access_token}`, '_blank');
+                        }}
+                        title="Open test link"
+                      >
+                        {result.status}
+                        <ExternalLink className="w-3 h-3 ml-1" />
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="cursor-pointer hover:opacity-80 transition-opacity bg-green-500/20 text-green-500 border-green-500/30 hover:bg-green-500/30"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          viewResultDetails(result);
+                        }}
+                        title="View results"
+                      >
+                        {result.status}
+                        <ExternalLink className="w-3 h-3 ml-1" />
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm">
                     {formatDate(result.created_at)}

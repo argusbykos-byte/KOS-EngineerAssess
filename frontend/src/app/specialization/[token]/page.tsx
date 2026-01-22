@@ -76,6 +76,7 @@ interface SpecializationTest {
   duration_hours: number;
   questions: Question[];
   candidate_name?: string;
+  time_remaining_seconds?: number | null;  // Backend-calculated remaining time
 }
 
 // Focus area display names
@@ -595,17 +596,14 @@ export default function SpecializationTestPage() {
                   )}
                 </div>
 
-                {/* Timer */}
+                {/* Timer - use backend-calculated time_remaining_seconds */}
                 <div className="bg-white/20 rounded-lg px-4 py-2">
                   <Timer
-                    initialSeconds={(() => {
-                      if (!test.start_time) return test.duration_hours * 3600;
-                      const startMs = new Date(test.start_time).getTime();
-                      const endMs = startMs + test.duration_hours * 3600 * 1000;
-                      const nowMs = Date.now();
-                      const remainingMs = endMs - nowMs;
-                      return Math.max(0, Math.floor(remainingMs / 1000));
-                    })()}
+                    initialSeconds={
+                      test.time_remaining_seconds !== null && test.time_remaining_seconds !== undefined
+                        ? test.time_remaining_seconds
+                        : test.duration_hours * 3600
+                    }
                     onExpire={handleTimeExpired}
                   />
                 </div>
