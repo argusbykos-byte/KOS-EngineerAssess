@@ -47,13 +47,20 @@ _lock = asyncio.Lock()
 
 async def get_candidate_context(
     candidate_id: int,
-    db: AsyncSession
+    db: AsyncSession,
+    parent_test_id: Optional[int] = None
 ) -> dict:
     """
-    Get candidate's context for specialization test generation.
+    Get candidate's comprehensive context for specialization test generation.
+
+    Fetches data from:
+    - Candidate (name, resume, extracted skills)
+    - Test (scores per category, AI analysis, strengths, improvements)
+    - Application (motivation, admired_engineers, what_makes_unique, self_rating, role)
+    - SkillAssessments (all self-assessed skills)
 
     Returns:
-        dict with resume_summary, top_skills, previous_score, self_description
+        dict with comprehensive candidate profile for specialization test generation
     """
     # Get candidate
     result = await db.execute(
@@ -65,52 +72,125 @@ async def get_candidate_context(
 
     context = {
         "candidate_name": candidate.name,
+        "candidate_email": candidate.email,
         "resume_summary": "",
         "top_skills": [],
+        "extracted_skills": [],
         "previous_score": None,
         "self_description": "",
+        "track": candidate.track,
+        "difficulty": candidate.difficulty,
+        # Test performance data
+        "test_scores": {},
+        "test_ai_analysis": None,
+        "test_strengths": [],
+        "test_improvements": [],
+        # Application data
+        "motivation": None,
+        "admired_engineers": None,
+        "what_makes_unique": None,
+        "self_rating": None,
+        "role": None,
+        "fit_score": None,
+        "suggested_position": None,
+        # Skill assessments
+        "skill_assessments": [],
     }
 
     # Get resume text
     if candidate.resume_text:
-        # Truncate for prompt
         context["resume_summary"] = candidate.resume_text[:3000]
 
     # Get extracted skills
     if candidate.extracted_skills:
+        context["extracted_skills"] = candidate.extracted_skills[:15]
         context["top_skills"] = candidate.extracted_skills[:15]
 
-    # Get previous test score if exists
-    test_result = await db.execute(
+    # Get test data - either specific parent test or latest completed
+    test_query = (
         select(Test)
         .options(selectinload(Test.report))
         .where(Test.candidate_id == candidate_id)
         .where(Test.status == "completed")
-        .order_by(Test.created_at.desc())
     )
+    if parent_test_id:
+        test_query = test_query.where(Test.id == parent_test_id)
+    else:
+        test_query = test_query.order_by(Test.created_at.desc())
+
+    test_result = await db.execute(test_query)
     previous_test = test_result.scalar_one_or_none()
+
     if previous_test and previous_test.report:
-        context["previous_score"] = previous_test.report.overall_score
+        report = previous_test.report
+        context["previous_score"] = report.overall_score
         context["previous_test_id"] = previous_test.id
 
-    # Get application data if linked
+        # Add category scores
+        context["test_scores"] = {
+            "overall": report.overall_score,
+            "brain_teaser": report.brain_teaser_score,
+            "coding": report.coding_score,
+            "code_review": report.code_review_score,
+            "system_design": report.system_design_score,
+            "signal_processing": report.signal_processing_score,
+        }
+
+        # Add AI analysis and feedback
+        context["test_ai_analysis"] = report.ai_summary
+        context["test_strengths"] = report.strengths or []
+        context["test_improvements"] = report.weaknesses or []
+
+    # Get application data - try by candidate_id first, then by email
     app_result = await db.execute(
         select(Application)
         .options(selectinload(Application.skill_assessments))
         .where(Application.candidate_id == candidate_id)
     )
     application = app_result.scalar_one_or_none()
+
+    # If not found by candidate_id, try by email
+    if not application and candidate.email:
+        app_result = await db.execute(
+            select(Application)
+            .options(selectinload(Application.skill_assessments))
+            .where(Application.email == candidate.email)
+        )
+        application = app_result.scalar_one_or_none()
+
     if application:
         context["self_description"] = application.self_description or ""
+        context["motivation"] = application.motivation
+        context["admired_engineers"] = application.admired_engineers
+        context["what_makes_unique"] = application.unique_trait
+        context["self_rating"] = application.overall_self_rating
+        context["role"] = application.self_description
 
-        # Get top self-rated skills
-        high_rated = sorted(
-            [s for s in application.skill_assessments if s.self_rating and s.self_rating >= 7],
-            key=lambda x: x.self_rating or 0,
-            reverse=True
-        )[:10]
+        # Get fit score and suggested position from kimi_analysis
+        if application.kimi_analysis:
+            kimi = application.kimi_analysis
+            context["fit_score"] = kimi.get("fit_score")
+            context["suggested_position"] = kimi.get("best_position")
+
+        # Get ALL skill assessments with ratings
+        skill_assessments = []
+        high_rated = []
+        for skill in application.skill_assessments:
+            skill_data = {
+                "name": skill.skill_name,
+                "category": skill.category,
+                "self_rating": skill.self_rating,
+            }
+            skill_assessments.append(skill_data)
+            if skill.self_rating and skill.self_rating >= 7:
+                high_rated.append(skill)
+
+        context["skill_assessments"] = skill_assessments
+
+        # Update top_skills with self-rated skills if available
         if high_rated:
-            context["top_skills"] = [s.skill_name for s in high_rated]
+            high_rated_sorted = sorted(high_rated, key=lambda x: x.self_rating or 0, reverse=True)[:10]
+            context["top_skills"] = [s.skill_name for s in high_rated_sorted]
 
     return context
 
@@ -183,13 +263,14 @@ async def generate_specialization_test(
         if not candidate:
             raise HTTPException(status_code=404, detail="Candidate not found")
 
-        # Get context for question generation
-        context = await get_candidate_context(candidate_id, db)
+        # Get comprehensive context for question generation
+        context = await get_candidate_context(candidate_id, db, data.parent_test_id)
 
         print(f"[Specialization] Generating {focus_area} test for {candidate.name}")
         print(f"[Specialization] Context: previous_score={context.get('previous_score')}, skills={context.get('top_skills', [])[:5]}")
+        print(f"[Specialization] Application data: fit_score={context.get('fit_score')}, motivation={bool(context.get('motivation'))}")
 
-        # Generate specialization questions using AI
+        # Generate specialization questions using AI with comprehensive context
         questions_data = await ai_service.generate_specialization_test_questions(
             focus_area=focus_area,
             sub_specialties=focus_config.get("sub_specialties", []),
@@ -198,6 +279,17 @@ async def generate_specialization_test(
             top_skills=context.get("top_skills", []),
             previous_score=context.get("previous_score"),
             resume_summary=context.get("resume_summary", ""),
+            # Additional context from test and application
+            test_scores=context.get("test_scores", {}),
+            test_strengths=context.get("test_strengths", []),
+            test_improvements=context.get("test_improvements", []),
+            motivation=context.get("motivation"),
+            admired_engineers=context.get("admired_engineers"),
+            what_makes_unique=context.get("what_makes_unique"),
+            self_rating=context.get("self_rating"),
+            fit_score=context.get("fit_score"),
+            suggested_position=context.get("suggested_position"),
+            skill_assessments=context.get("skill_assessments", []),
         )
 
         if not questions_data:
@@ -384,7 +476,37 @@ async def analyze_specialization_test(
     if not test.specialization_result:
         raise HTTPException(status_code=404, detail="Specialization result record not found")
 
-    # Collect answers
+    # Score any unscored answers first
+    unscored_count = 0
+    for question in test.questions:
+        if question.answer and question.answer.score is None:
+            unscored_count += 1
+            try:
+                # Score the answer using AI
+                print(f"[Specialization] Scoring unscored answer for question {question.id}")
+                evaluation = await ai_service.evaluate_answer(
+                    question_text=question.question_text,
+                    question_code=question.question_code,
+                    expected_answer=question.expected_answer,
+                    candidate_answer=question.answer.candidate_answer,
+                    candidate_code=question.answer.candidate_code,
+                    max_score=question.max_score,
+                    category=question.category,
+                )
+                if evaluation:
+                    question.answer.score = evaluation.get("score", 0)
+                    question.answer.feedback = evaluation.get("feedback", "")
+                    question.answer.ai_evaluation = evaluation
+            except Exception as e:
+                print(f"[Specialization] Error scoring question {question.id}: {e}")
+                # Continue with other questions even if one fails
+
+    if unscored_count > 0:
+        print(f"[Specialization] Scored {unscored_count} previously unscored answers")
+        await db.commit()
+        await db.refresh(test)
+
+    # Collect answers (now with scores)
     question_answers = []
     for question in test.questions:
         if question.answer:
@@ -482,6 +604,8 @@ async def list_specialization_results(
         candidate = candidates.get(sr.candidate_id)
         items.append(SpecializationTestListItem(
             id=sr.id,
+            test_id=sr.test_id,
+            access_token=sr.test.access_token if sr.test else "",
             candidate_id=sr.candidate_id,
             candidate_name=candidate.name if candidate else "Unknown",
             focus_area=sr.focus_area,

@@ -365,6 +365,42 @@ async def submit_application(
             _application_creation_locks.discard(email_lower)
 
 
+@router.get("/by-email/{email}")
+async def get_application_by_email(
+    email: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get application by email (for checking if Kimi2 analysis exists).
+
+    Returns minimal data needed for specialization test button visibility.
+    Must be defined BEFORE /{token} route to avoid route conflicts.
+    """
+    query = select(Application).where(Application.email == email)
+    result = await db.execute(query)
+    application = result.scalar_one_or_none()
+
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # Extract fit_score from kimi_analysis if exists
+    fit_score = None
+    if application.kimi_analysis and isinstance(application.kimi_analysis, dict):
+        fit_score = application.kimi_analysis.get("fit_score")
+
+    return {
+        "id": application.id,
+        "email": application.email,
+        "has_kimi_analysis": application.kimi_analysis is not None,
+        "fit_score": fit_score,
+        "suggested_position": application.suggested_position,
+        "motivation": application.motivation,
+        "admired_engineers": application.admired_engineers,
+        "unique_trait": application.unique_trait,
+        "overall_self_rating": application.overall_self_rating,
+    }
+
+
 @router.get("/{token}", response_model=ApplicationDetailResponse)
 async def get_application_by_token(
     token: str,

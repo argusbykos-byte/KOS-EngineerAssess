@@ -1,7 +1,10 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import event
+from sqlalchemy.exc import OperationalError
 from app.config import settings
+import asyncio
+import random
 
 
 # SQLite connection settings to prevent "database is locked" errors
@@ -15,7 +18,31 @@ engine = create_async_engine(
     },
     pool_pre_ping=True,  # Verify connections before use
 )
+
 async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+async def retry_on_lock(func, max_retries=5, base_delay=0.5):
+    """
+    Retry a database operation with exponential backoff on lock errors.
+    Use this for critical write operations that might fail due to database locks.
+    
+    Usage:
+        result = await retry_on_lock(lambda: db.commit())
+    """
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            return await func()
+        except OperationalError as e:
+            if "database is locked" in str(e).lower():
+                last_error = e
+                delay = base_delay * (2 ** attempt) + random.uniform(0, 0.5)
+                print(f"[Database] Lock detected, retry {attempt + 1}/{max_retries} after {delay:.2f}s")
+                await asyncio.sleep(delay)
+            else:
+                raise
+    raise last_error
 
 
 # CRITICAL: Enable WAL mode for SQLite to prevent "database is locked" errors

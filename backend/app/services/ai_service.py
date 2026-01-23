@@ -1156,7 +1156,9 @@ Evaluate this response."""
         terminology_context = "Technical terms you can reference:\n"
         all_terms = self.knowledge_base.get_all_terminology()
         for term_key, term_data in list(all_terms.items())[:15]:  # Limit to 15 terms
-            terminology_context += f"- {term_data.get('term', term_key)}: {term_data.get('definition', '')[:100]}...\n"
+            term = term_data.get('term') or term_key
+            definition = (term_data.get('definition') or '')[:100]
+            terminology_context += f"- {term}: {definition}...\n"
 
         messages = [
             {
@@ -2362,12 +2364,24 @@ Please analyze this candidate and provide your assessment as JSON."""
         top_skills: List[str] = None,
         previous_score: float = None,
         resume_summary: str = "",
+        # Additional context from test and application
+        test_scores: Dict[str, Any] = None,
+        test_strengths: List[str] = None,
+        test_improvements: List[str] = None,
+        motivation: str = None,
+        admired_engineers: str = None,
+        what_makes_unique: str = None,
+        self_rating: int = None,
+        fit_score: float = None,
+        suggested_position: str = None,
+        skill_assessments: List[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Generate 8-10 questions for a 1-hour SPECIALIZATION test.
 
         These questions are designed to identify the candidate's EXACT sub-specialty
-        within their focus area.
+        within their focus area, using comprehensive data from their test performance,
+        application, and self-assessments.
 
         Args:
             focus_area: The focus area (e.g., "ml", "embedded")
@@ -2377,39 +2391,112 @@ Please analyze this candidate and provide your assessment as JSON."""
             top_skills: Top self-rated skills
             previous_score: Score from previous standard test
             resume_summary: Summary of resume
+            test_scores: Dict of category scores from previous test
+            test_strengths: Strengths identified from test
+            test_improvements: Areas for improvement from test
+            motivation: Why they want to join
+            admired_engineers: Engineers they admire
+            what_makes_unique: What makes them unique
+            self_rating: Self-rating (1-100)
+            fit_score: AI fit score from application analysis
+            suggested_position: AI suggested position
+            skill_assessments: All self-assessed skills with ratings
 
         Returns:
             List of question dictionaries with tests_sub_specialty field
         """
         skills_str = ", ".join(top_skills[:10]) if top_skills else "Not provided"
 
+        # Build comprehensive test performance section
+        test_performance = ""
+        if test_scores:
+            test_performance = f"""
+## Test Performance Summary:
+- Overall Score: {test_scores.get('overall', 'N/A')}%
+- Brain Teaser: {test_scores.get('brain_teaser', 'N/A')}/100
+- Coding: {test_scores.get('coding', 'N/A')}/100
+- Code Review: {test_scores.get('code_review', 'N/A')}/100
+- System Design: {test_scores.get('system_design', 'N/A')}/100
+"""
+            if test_scores.get('signal_processing') is not None:
+                test_performance += f"- Signal Processing: {test_scores.get('signal_processing')}/100\n"
+
+        # Build strengths and improvements section
+        strengths_section = ""
+        if test_strengths:
+            strengths_section = "\n## Strengths Identified:\n" + "\n".join(f"- {s}" for s in test_strengths[:5])
+
+        improvements_section = ""
+        if test_improvements:
+            improvements_section = "\n## Areas for Improvement:\n" + "\n".join(f"- {i}" for i in test_improvements[:5])
+
+        # Build candidate profile section
+        profile_section = "\n## Candidate Profile:"
+        if self_description:
+            profile_section += f"\n- Desired Role: {self_description}"
+        if motivation:
+            profile_section += f"\n- Motivation: {motivation[:500]}"
+        if admired_engineers:
+            profile_section += f"\n- Admired Engineers: {admired_engineers[:300]}"
+        if what_makes_unique:
+            profile_section += f"\n- What Makes Them Unique: {what_makes_unique[:500]}"
+        if self_rating:
+            profile_section += f"\n- Self-Rating: {self_rating}/100"
+
+        # Build top self-assessed skills section (rated 7+)
+        top_skills_section = ""
+        if skill_assessments:
+            high_rated = [s for s in skill_assessments if s.get('self_rating', 0) >= 7]
+            high_rated_sorted = sorted(high_rated, key=lambda x: x.get('self_rating', 0), reverse=True)[:10]
+            if high_rated_sorted:
+                top_skills_section = "\n## Top Self-Assessed Skills (rated 7+):\n"
+                for skill in high_rated_sorted:
+                    top_skills_section += f"- {skill.get('name', '')}: {skill.get('self_rating', 'N/A')}/10 ({skill.get('category', '')})\n"
+
+        # Build AI position fit section
+        fit_section = ""
+        if fit_score or suggested_position:
+            fit_section = "\n## AI Position Fit Analysis:"
+            if suggested_position:
+                fit_section += f"\n- Suggested Position: {suggested_position}"
+            if fit_score:
+                fit_section += f"\n- Fit Score: {fit_score}%"
+
+        # Build resume section
+        resume_section = ""
+        if resume_summary:
+            resume_section = f"\n## Resume Highlights:\n{resume_summary[:1500]}"
+
         messages = [
             {
                 "role": "system",
-                "content": f"""You are creating a 1-hour SPECIALIZATION test for {candidate_name}.
+                "content": f"""You are creating a 60-minute SPECIALIZATION test for {candidate_name}.
 
-Their background:
-- Role: {self_description or "Not specified"}
-- Previous test score: {previous_score or "Not taken yet"}
-- Top skills from self-assessment: {skills_str}
-- Resume highlights: {resume_summary[:1500] if resume_summary else "Not provided"}
+{test_performance}{strengths_section}{improvements_section}{profile_section}{top_skills_section}{fit_section}{resume_section}
+
+---
 
 Focus area: {focus_area.upper()}
 Possible sub-specialties: {", ".join(sub_specialties)}
 
-Generate 8-10 questions that will identify their EXACT sub-specialty within {focus_area}.
+Based on this comprehensive profile, generate 10 highly targeted questions that:
+1. Probe deeper into their stated strengths to verify expertise
+2. Test the specific sub-specializations within their field
+3. Challenge their areas for improvement constructively
+4. Relate to their motivation and unique background
+5. Help identify their exact specialization (e.g., for ML: RL vs CV vs NLP vs MLOps vs Deep Learning)
 
 Question types to include:
 - 2 theoretical depth questions (test foundational understanding)
 - 3 practical implementation questions (test real-world skills)
 - 2 trade-off/decision questions (test judgment and experience)
-- 2 cutting-edge/research questions (test growth potential and current knowledge)
+- 3 cutting-edge/research questions (test growth potential and current knowledge)
 
 Each question should help differentiate between sub-specialties.
 For ML, differentiate: RL vs Supervised, Training vs Inference, CV vs NLP, Research vs Production.
 For Embedded, differentiate: RTOS vs Bare-metal, Drivers vs Application, Power vs Performance.
 
-Return a JSON array of 8-10 question objects with this structure:
+Return a JSON array of 10 question objects with this structure:
 {{
   "question_text": "The question prompt",
   "question_code": "Code snippet if applicable, null otherwise",
@@ -2423,7 +2510,7 @@ Return ONLY the JSON array, no other text."""
             },
             {
                 "role": "user",
-                "content": f"Generate 8-10 specialization questions for {focus_area} to identify the candidate's exact sub-specialty among: {', '.join(sub_specialties[:5])}"
+                "content": f"Generate 10 specialization questions for {focus_area} to identify the candidate's exact sub-specialty among: {', '.join(sub_specialties[:5])}"
             }
         ]
 
@@ -2535,14 +2622,25 @@ Return ONLY the JSON array, no other text."""
         Returns:
             Analysis dictionary with primary_specialty, sub_specialties rankings, etc.
         """
-        # Build answers context
+        # Build answers context - use null-safe access for all fields
         answers_context = []
         for qa in question_answers[:10]:
+            # Null-safe access: field can be None even if key exists
+            question_text = (qa.get('question_text') or '')[:500]
+            candidate_answer = (qa.get('candidate_answer') or 'No answer')[:1000]
+            candidate_code = qa.get('candidate_code') or ''
+            score = qa.get('score') if qa.get('score') is not None else 'Not evaluated'
+            feedback = (qa.get('feedback') or 'No feedback')[:500]
+
+            answer_text = candidate_answer
+            if candidate_code:
+                answer_text += f"\n\nCode:\n{candidate_code[:1000]}"
+
             answers_context.append(f"""
-Question: {qa.get('question_text', '')[:500]}
-Answer: {qa.get('candidate_answer', 'No answer')[:1000]}
-Score: {qa.get('score', 'Not evaluated')}
-Feedback: {qa.get('feedback', 'No feedback')[:500]}
+Question: {question_text}
+Answer: {answer_text}
+Score: {score}
+Feedback: {feedback}
 """)
 
         messages = [

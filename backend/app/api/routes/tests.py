@@ -9,8 +9,8 @@ from datetime import datetime, timedelta
 import secrets
 import asyncio
 from app.database import get_db
-from app.models import Candidate, Test, Question, Answer, Report
-from app.models.test import TestStatus
+from app.models import Candidate, Test, Question, Answer, Report, get_focus_area_config
+from app.models.test import TestStatus, TestType
 from app.models.application import Application, ApplicationStatus
 from app.schemas.test import (
     TestCreate, TestResponse, TestWithQuestions,
@@ -20,6 +20,123 @@ from app.services.ai_service import ai_service, detect_programming_language
 from app.services.nda_service import nda_service
 
 router = APIRouter()
+
+
+async def _analyze_specialization_test_background(test_id: int):
+    """
+    Background task to analyze a completed specialization test.
+    Called automatically after a specialization test is submitted.
+    """
+    from app.database import async_session_maker
+    from app.models.specialization import SpecializationResult
+    from datetime import datetime
+
+    print(f"[Specialization] Starting background analysis for test {test_id}")
+
+    async with async_session_maker() as db:
+        try:
+            # Get test with questions and answers
+            test_result = await db.execute(
+                select(Test)
+                .options(
+                    selectinload(Test.questions).selectinload(Question.answer),
+                    selectinload(Test.candidate),
+                )
+                .where(Test.id == test_id)
+            )
+            test = test_result.scalar_one_or_none()
+
+            if not test:
+                print(f"[Specialization] Test {test_id} not found for analysis")
+                return
+
+            if test.test_type != TestType.SPECIALIZATION.value:
+                print(f"[Specialization] Test {test_id} is not a specialization test")
+                return
+
+            # Get specialization result record
+            spec_result_query = await db.execute(
+                select(SpecializationResult).where(SpecializationResult.test_id == test_id)
+            )
+            spec_result = spec_result_query.scalar_one_or_none()
+
+            if not spec_result:
+                print(f"[Specialization] No specialization result record for test {test_id}")
+                return
+
+            # Score any unscored answers first
+            unscored_count = 0
+            for question in test.questions:
+                if question.answer and question.answer.score is None:
+                    unscored_count += 1
+                    try:
+                        print(f"[Specialization] Scoring unscored answer for question {question.id}")
+                        evaluation = await ai_service.evaluate_answer(
+                            question_text=question.question_text,
+                            question_code=question.question_code,
+                            expected_answer=question.expected_answer,
+                            candidate_answer=question.answer.candidate_answer,
+                            candidate_code=question.answer.candidate_code,
+                            max_score=question.max_score,
+                            category=question.category,
+                        )
+                        if evaluation:
+                            question.answer.score = evaluation.get("score", 0)
+                            question.answer.feedback = evaluation.get("feedback", "")
+                            question.answer.ai_evaluation = evaluation
+                    except Exception as e:
+                        print(f"[Specialization] Error scoring question {question.id}: {e}")
+
+            if unscored_count > 0:
+                print(f"[Specialization] Scored {unscored_count} previously unscored answers")
+                await db.commit()
+
+            # Collect answers (now with scores)
+            question_answers = []
+            for question in test.questions:
+                if question.answer:
+                    question_answers.append({
+                        "question_text": question.question_text,
+                        "candidate_answer": question.answer.candidate_answer,
+                        "candidate_code": question.answer.candidate_code,
+                        "score": question.answer.score,
+                        "feedback": question.answer.feedback,
+                    })
+
+            # Get focus area config
+            focus_config = get_focus_area_config(test.specialization_focus)
+            sub_specialties = focus_config.get("sub_specialties", []) if focus_config else []
+
+            # Analyze with AI
+            print(f"[Specialization] Calling AI analysis for test {test_id}")
+            analysis = await ai_service.analyze_specialization_results(
+                focus_area=test.specialization_focus,
+                sub_specialties=sub_specialties,
+                candidate_name=test.candidate.name if test.candidate else "Candidate",
+                question_answers=question_answers,
+            )
+
+            if not analysis:
+                print(f"[Specialization] AI analysis returned no results for test {test_id}")
+                return
+
+            # Update specialization result
+            spec_result.primary_specialty = analysis.get("primary_specialty")
+            spec_result.specialty_score = analysis.get("specialty_score")
+            spec_result.confidence = analysis.get("confidence")
+            spec_result.sub_specialties = analysis.get("sub_specialties", [])
+            spec_result.recommended_tasks = analysis.get("recommended_tasks", [])
+            spec_result.team_fit_analysis = analysis.get("team_fit_analysis")
+            spec_result.raw_analysis = analysis
+            spec_result.updated_at = datetime.utcnow()
+
+            await db.commit()
+            print(f"[Specialization] Analysis complete for test {test_id}: {spec_result.primary_specialty}")
+
+        except Exception as e:
+            print(f"[Specialization] Error analyzing test {test_id}: {e}")
+            await db.rollback()
+
 
 # CRITICAL: In-memory lock to prevent duplicate test creation
 # When test generation is in progress for a candidate, block additional requests
@@ -537,12 +654,26 @@ async def get_test_by_token(access_token: str, db: AsyncSession = Depends(get_db
         )
 
     # Check if test is expired (account for break time - breaks pause the test)
+    # But NEVER expire tests that have submitted answers - those should be marked as completed instead
     if test.status in [TestStatus.IN_PROGRESS.value, TestStatus.ON_BREAK.value] and test.start_time:
         # Effective end time = start + duration + used break time
         effective_duration = timedelta(hours=test.duration_hours) + timedelta(seconds=test.used_break_time_seconds or 0)
         end_time = test.start_time + effective_duration
         if datetime.utcnow() > end_time and test.status != TestStatus.ON_BREAK.value:
-            test.status = TestStatus.EXPIRED.value
+            # Check if test has any submitted answers
+            has_submitted_answers = any(
+                q.answer and q.answer.is_submitted
+                for q in test.questions
+            )
+            if has_submitted_answers:
+                # Mark as completed instead of expired - candidate worked on it
+                test.status = TestStatus.COMPLETED.value
+                test.end_time = datetime.utcnow()
+                print(f"[Tests] Test {test.id} has submitted answers, marking as completed instead of expired")
+            else:
+                # No submitted answers - safe to expire
+                test.status = TestStatus.EXPIRED.value
+                print(f"[Tests] Test {test.id} has no submitted answers, marking as expired")
             await db.commit()
 
     # Calculate remaining time (excluding current break if on break)
@@ -715,6 +846,11 @@ async def complete_test(access_token: str, db: AsyncSession = Depends(get_db)):
 
     await db.commit()
     await db.refresh(test)
+
+    # If this is a specialization test, trigger analysis in the background
+    if test.test_type == TestType.SPECIALIZATION.value:
+        print(f"[Specialization] Test {test.id} completed, triggering background analysis")
+        asyncio.create_task(_analyze_specialization_test_background(test.id))
 
     return test
 

@@ -30,6 +30,7 @@ class GenerateSpecializationTestRequest(BaseModel):
     candidate_id: int
     focus_area: str  # FocusArea enum value
     duration_minutes: int = Field(default=60, ge=30, le=120)
+    parent_test_id: Optional[int] = None  # Optional: link to completed test for richer context
 
 
 class AnalyzeSpecializationResultsRequest(BaseModel):
@@ -88,6 +89,8 @@ class GenerateSpecializationTestResponse(BaseModel):
 class SpecializationTestListItem(BaseModel):
     """Item in specialization test list"""
     id: int
+    test_id: int
+    access_token: str
     candidate_id: int
     candidate_name: str
     focus_area: str
