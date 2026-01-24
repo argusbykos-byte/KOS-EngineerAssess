@@ -117,6 +117,14 @@ export default function ReportDetailPage() {
   const [hasKimiAnalysis, setHasKimiAnalysis] = useState<boolean | null>(null);
   const [applicationFitScore, setApplicationFitScore] = useState<number | null>(null);
 
+  // Specialization test results (1-hour deep dive) for 2000-point system
+  const [specTestResults, setSpecTestResults] = useState<{
+    specialty_score: number | null;
+    primary_specialty: string | null;
+    confidence: number | null;
+    focus_area: string;
+  } | null>(null);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -135,10 +143,12 @@ export default function ReportDetailPage() {
           setHasCertificate(false);
         }
 
+        let candidateId: number | null = null;
         // Fetch test data for NDA check and start/end times
         try {
           const testRes = await testsApi.get(testId);
           setTestData(testRes.data);
+          candidateId = testRes.data.candidate_id;
           setHasNdaSigned(!!testRes.data.nda_signature);
         } catch {
           setHasNdaSigned(false);
@@ -164,6 +174,28 @@ export default function ReportDetailPage() {
           } catch {
             // No application found for this candidate - that's OK, button will still work
             setHasKimiAnalysis(null);
+          }
+        }
+
+        // Fetch specialization test results (1-hour deep dive) by candidate_id
+        if (candidateId) {
+          try {
+            const specRes = await specializationApi.getCandidateSpecializations(candidateId);
+            if (specRes.data && specRes.data.length > 0) {
+              // Get the most recent specialization result
+              const latestSpec = specRes.data[0];
+              if (latestSpec.specialty_score !== null) {
+                setSpecTestResults({
+                  specialty_score: latestSpec.specialty_score,
+                  primary_specialty: latestSpec.primary_specialty,
+                  confidence: latestSpec.confidence,
+                  focus_area: latestSpec.focus_area,
+                });
+              }
+            }
+          } catch {
+            // No specialization test results - that's OK
+            console.log("No specialization test results available");
           }
         }
       } catch (error) {
@@ -656,7 +688,7 @@ export default function ReportDetailPage() {
         doc.setFontSize(11);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(147, 51, 234);
-        doc.text(`Specialization: ${TRACK_NAMES[report.specialization_track] || report.specialization_track}`, specBoxX + 5, yPosition + 5);
+        doc.text(`Concentration: ${TRACK_NAMES[report.specialization_track] || report.specialization_track}`, specBoxX + 5, yPosition + 5);
 
         doc.setFontSize(20);
         doc.text(`${report.specialization_score?.toFixed(0) || 0} / 500`, specBoxX + 5, yPosition + 22);
@@ -1094,7 +1126,7 @@ export default function ReportDetailPage() {
                   <div className="p-4 rounded-lg border bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-900/30 dark:to-indigo-900/30">
                     <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
                       <Sparkles className="w-5 h-5 text-purple-500" />
-                      Specialization: {getTrackName(report.specialization_track)}
+                      Concentration: {getTrackName(report.specialization_track)}
                     </h3>
                     <div className="space-y-3">
                       <div className="flex items-baseline gap-2">
@@ -1124,6 +1156,63 @@ export default function ReportDetailPage() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Specialization Test (1-hour) - 1000 points */}
+              {specTestResults && specTestResults.specialty_score !== null && (
+                <div className="p-4 rounded-lg border bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/30 dark:to-orange-900/30">
+                  <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                    <Zap className="w-5 h-5 text-amber-500" />
+                    Specialization Test: {specTestResults.primary_specialty || specTestResults.focus_area}
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-bold text-amber-600">
+                        {((specTestResults.specialty_score || 0) * 10).toFixed(0)}
+                      </span>
+                      <span className="text-lg text-muted-foreground">/ 1000</span>
+                      <span className={`text-sm font-medium ml-2 ${getScoreColor(specTestResults.specialty_score || 0)}`}>
+                        ({(specTestResults.specialty_score || 0).toFixed(0)}%)
+                      </span>
+                    </div>
+                    {specTestResults.confidence && (
+                      <div className="text-sm text-muted-foreground">
+                        Confidence: {specTestResults.confidence.toFixed(0)}%
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Total Score - 2000 points */}
+              <div className="col-span-full p-4 rounded-lg border-2 border-primary bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900">
+                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                  <Award className="w-5 h-5 text-primary" />
+                  Total Score
+                </h3>
+                <div className="flex items-baseline gap-3">
+                  <span className="text-4xl font-bold text-primary">
+                    {((report.general_score || 0) + (report.specialization_score || 0) + ((specTestResults?.specialty_score || 0) * 10)).toFixed(0)}
+                  </span>
+                  <span className="text-xl text-muted-foreground">/ 2000</span>
+                  <span className={`text-lg font-medium ml-2 ${getScoreColor(((report.general_score || 0) + (report.specialization_score || 0) + ((specTestResults?.specialty_score || 0) * 10)) / 20)}`}>
+                    ({(((report.general_score || 0) + (report.specialization_score || 0) + ((specTestResults?.specialty_score || 0) * 10)) / 20).toFixed(0)}%)
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                  <div className="text-center p-2 bg-blue-100 dark:bg-blue-900/30 rounded">
+                    <div className="font-medium">General</div>
+                    <div>{(report.general_score || 0).toFixed(0)} / 500</div>
+                  </div>
+                  <div className="text-center p-2 bg-purple-100 dark:bg-purple-900/30 rounded">
+                    <div className="font-medium">Concentration</div>
+                    <div>{(report.specialization_score || 0).toFixed(0)} / 500</div>
+                  </div>
+                  <div className="text-center p-2 bg-amber-100 dark:bg-amber-900/30 rounded">
+                    <div className="font-medium">Specialization</div>
+                    <div>{((specTestResults?.specialty_score || 0) * 10).toFixed(0)} / 1000</div>
+                  </div>
+                </div>
               </div>
           </CardContent>
         </Card>

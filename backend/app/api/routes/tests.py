@@ -670,6 +670,11 @@ async def get_test_by_token(access_token: str, db: AsyncSession = Depends(get_db
                 test.status = TestStatus.COMPLETED.value
                 test.end_time = datetime.utcnow()
                 print(f"[Tests] Test {test.id} has submitted answers, marking as completed instead of expired")
+                
+                # Auto-trigger Kimi analysis for specialization tests
+                if test.test_type == TestType.SPECIALIZATION.value:
+                    print(f"[Specialization] Test {test.id} expired with answers, triggering background analysis")
+                    asyncio.create_task(_analyze_specialization_test_background(test.id))
             else:
                 # No submitted answers - safe to expire
                 test.status = TestStatus.EXPIRED.value
@@ -1025,7 +1030,13 @@ async def log_anti_cheat_event(
         raise HTTPException(status_code=404, detail="Test not found")
 
     if test.status not in [TestStatus.IN_PROGRESS.value, TestStatus.ON_BREAK.value]:
-        raise HTTPException(status_code=400, detail="Test is not in progress")
+        # Test already completed - silently ignore anti-cheat events instead of error
+        return {
+            "success": False,
+            "message": "Test is not in progress",
+            "is_disqualified": test.is_disqualified or False,
+            "disqualification_reason": test.disqualification_reason
+        }
 
     # Check if already disqualified
     if test.is_disqualified:
