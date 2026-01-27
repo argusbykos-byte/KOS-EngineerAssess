@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api",
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://10.40.0.72:8000/api",
   headers: {
     "Content-Type": "application/json",
   },
@@ -10,7 +10,7 @@ const api = axios.create({
 
 // Separate instance for long-running operations (AI question generation takes 60-90 seconds)
 const longRunningApi = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api",
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://10.40.0.72:8000/api",
   headers: {
     "Content-Type": "application/json",
   },
@@ -19,7 +19,7 @@ const longRunningApi = axios.create({
 
 // Extra-long timeout for operations that involve Kimi2 skill extraction (2-4 minutes)
 const skillExtractionApi = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api",
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://10.40.0.72:8000/api",
   headers: {
     "Content-Type": "application/json",
   },
@@ -28,7 +28,7 @@ const skillExtractionApi = axios.create({
 
 // Very long timeout for test generation (10-30 minutes - multiple Kimi2 API calls)
 const testGenerationApi = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api",
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://10.40.0.72:8000/api",
   headers: {
     "Content-Type": "application/json",
   },

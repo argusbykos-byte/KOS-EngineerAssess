@@ -39,6 +39,8 @@ cors_origins = [
     "http://10.40.0.7:3001",
     "http://10.40.0.53:3000",
     "http://10.40.0.53:3001",
+    "http://10.40.0.72:3000",
+    "http://10.40.0.72:3001",
     frontend_url,
 ]
 app.add_middleware(
