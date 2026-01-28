@@ -2294,6 +2294,9 @@ Please analyze this candidate and provide your assessment as JSON."""
             print("[AIService] Empty response from Kimi2 for application analysis")
             return self._get_default_analysis()
 
+        # Debug: print raw response to see what Kimi is returning
+        print(f"[AIService] Kimi2 raw response (first 500 chars): {response[:500]}")
+
         # Parse the response
         try:
             analysis = json.loads(response)
