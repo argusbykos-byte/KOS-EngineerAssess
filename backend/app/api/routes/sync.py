@@ -22,7 +22,7 @@ async def sync_cloud_applications(db: AsyncSession = Depends(get_db)):
         cloud_apps = await pg_conn.fetch("""
             SELECT full_name, email, phone, location, primary_role,
                    motivation, engineers_admired, self_rating, unique_qualities,
-                   resume_filename, skills, created_at, status
+                   resume_filename, skills, created_at, status, available_for_trial
             FROM cloud_applications ORDER BY id
         """)
 
@@ -43,17 +43,19 @@ async def sync_cloud_applications(db: AsyncSession = Depends(get_db)):
             token = uuid.uuid4().hex + uuid.uuid4().hex[:32]
             now = datetime.utcnow()
 
-            # Insert into local database
+            # Insert into local database with all NOT NULL fields
             await db.execute(
                 text("""
                     INSERT INTO applications (
                         full_name, email, phone, location, self_description,
                         motivation, admired_engineers, overall_self_rating, unique_trait,
-                        resume_filename, application_token, status, created_at, updated_at
+                        resume_filename, application_token, status, availability,
+                        created_at, updated_at
                     ) VALUES (
                         :full_name, :email, :phone, :location, :primary_role,
                         :motivation, :engineers_admired, :self_rating, :unique_qualities,
-                        :resume_filename, :token, :status, :created_at, :updated_at
+                        :resume_filename, :token, :status, :availability,
+                        :created_at, :updated_at
                     )
                 """),
                 {
@@ -69,6 +71,7 @@ async def sync_cloud_applications(db: AsyncSession = Depends(get_db)):
                     "resume_filename": app['resume_filename'],
                     "token": token,
                     "status": app['status'] or 'pending',
+                    "availability": app['available_for_trial'] or 'need_to_discuss',
                     "created_at": app['created_at'] or now,
                     "updated_at": now
                 }
