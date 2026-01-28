@@ -49,6 +49,10 @@ class SkillCategory(str, enum.Enum):
     FRAMEWORKS = "frameworks"
     TOOLS = "tools"
     COMPETENCIES = "competencies"
+    FIRMWARE = "firmware"
+    PCB = "pcb"
+    MECHANICAL = "mechanical"
+    BIOMEDICAL = "biomedical"
 
 
 class Application(Base):
