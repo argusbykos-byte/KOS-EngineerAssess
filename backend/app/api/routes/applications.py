@@ -7,7 +7,7 @@ Admin endpoints for managing and converting applications.
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.orm import selectinload
 from typing import List, Optional, Set
 from datetime import datetime
@@ -942,11 +942,11 @@ async def delete_application(
     """
     Delete an application and all associated data (admin endpoint).
 
-    This will cascade delete:
+    This will delete:
     - All skill assessments for the application
-    - The uploaded resume file (if any)
+    - The application record itself
     """
-    # Get application
+    # First check if application exists and get info
     query = select(Application).where(Application.id == application_id)
     result = await db.execute(query)
     application = result.scalar_one_or_none()
@@ -961,6 +961,8 @@ async def delete_application(
             detail="Cannot delete application that has been converted to a candidate. Delete the candidate first."
         )
 
+    full_name = application.full_name
+
     # Delete resume file if exists
     if application.resume_path and os.path.exists(application.resume_path):
         try:
@@ -968,11 +970,23 @@ async def delete_application(
         except Exception as e:
             print(f"[Applications] Warning: Failed to delete resume file: {e}")
 
-    # Delete application (skill_assessments cascade deleted automatically)
-    await db.delete(application)
+    # First delete related skill_assessments using raw SQL
+    await db.execute(
+        text("DELETE FROM skill_assessments WHERE application_id = :id"),
+        {"id": application_id}
+    )
+
+    # Then delete the application using raw SQL
+    result = await db.execute(
+        text("DELETE FROM applications WHERE id = :id"),
+        {"id": application_id}
+    )
     await db.commit()
 
-    return {"success": True, "message": f"Application for {application.full_name} deleted successfully"}
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    return {"success": True, "deleted_id": application_id, "message": f"Application for {full_name} deleted successfully"}
 
 
 @router.post("/admin/{application_id}/create-candidate", response_model=CreateCandidateResponse)
