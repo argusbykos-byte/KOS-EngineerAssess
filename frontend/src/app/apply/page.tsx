@@ -86,17 +86,6 @@ export default function ApplyPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [applicationId, setApplicationId] = useState<number | null>(null);
-  const [currentStep, setCurrentStep] = useState(1);
-  
-  // Skills state for Step 2
-  const [skills, setSkills] = useState({
-    python: 5,
-    ml_deep_learning: 5,
-    signal_processing: 5,
-    embedded_systems: 5,
-    algorithms: 5,
-    system_design: 5,
-  });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -303,24 +292,24 @@ export default function ApplyPage() {
         {/* Progress Steps */}
         <div className="flex items-center justify-center gap-4 mb-8">
           <div className="flex items-center gap-2">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-medium ${currentStep >= 1 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-              {currentStep > 1 ? <CheckCircle2 className="w-5 h-5" /> : '1'}
+            <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-medium">
+              1
             </div>
-            <span className={currentStep >= 1 ? "font-medium" : "text-muted-foreground"}>Application</span>
+            <span className="font-medium">Application</span>
           </div>
           <div className="w-16 h-0.5 bg-muted" />
           <div className="flex items-center gap-2">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-medium ${currentStep >= 2 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-              {currentStep > 2 ? <CheckCircle2 className="w-5 h-5" /> : '2'}
+            <div className="w-8 h-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center font-medium">
+              2
             </div>
-            <span className={currentStep >= 2 ? "font-medium" : "text-muted-foreground"}>Skills</span>
+            <span className="text-muted-foreground">Skills</span>
           </div>
           <div className="w-16 h-0.5 bg-muted" />
           <div className="flex items-center gap-2">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-medium ${currentStep >= 3 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+            <div className="w-8 h-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center font-medium">
               3
             </div>
-            <span className={currentStep >= 3 ? "font-medium" : "text-muted-foreground"}>Review</span>
+            <span className="text-muted-foreground">Complete</span>
           </div>
         </div>
 
@@ -331,9 +320,6 @@ export default function ApplyPage() {
         )}
 
         <form onSubmit={handleSubmit}>
-          {/* Step 1: Application Info */}
-          {currentStep === 1 && (
-          <>
           {/* Personal Information */}
           <Card className="mb-6 bg-card/50 backdrop-blur-sm border-primary/20">
             <CardHeader>
@@ -635,214 +621,31 @@ export default function ApplyPage() {
             </CardContent>
           </Card>
 
-          </>
-          )}
-          
-          {/* Step 2: Skills Assessment */}
-          {currentStep === 2 && (
-            <Card className="mb-6 bg-card/50 backdrop-blur-sm border-primary/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Star className="w-5 h-5 text-primary" />
-                  Skills Self-Assessment
-                </CardTitle>
-                <CardDescription>Rate your proficiency in each area (1-10)</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label>Python Programming</Label>
-                      <span className="text-sm font-medium">{skills.python}/10</span>
-                    </div>
-                    <Slider
-                      value={[skills.python]}
-                      onValueChange={(v) => setSkills({...skills, python: v[0]})}
-                      max={10}
-                      min={1}
-                      step={1}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label>Machine Learning / Deep Learning</Label>
-                      <span className="text-sm font-medium">{skills.ml_deep_learning}/10</span>
-                    </div>
-                    <Slider
-                      value={[skills.ml_deep_learning]}
-                      onValueChange={(v) => setSkills({...skills, ml_deep_learning: v[0]})}
-                      max={10}
-                      min={1}
-                      step={1}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label>Signal Processing</Label>
-                      <span className="text-sm font-medium">{skills.signal_processing}/10</span>
-                    </div>
-                    <Slider
-                      value={[skills.signal_processing]}
-                      onValueChange={(v) => setSkills({...skills, signal_processing: v[0]})}
-                      max={10}
-                      min={1}
-                      step={1}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label>Embedded Systems</Label>
-                      <span className="text-sm font-medium">{skills.embedded_systems}/10</span>
-                    </div>
-                    <Slider
-                      value={[skills.embedded_systems]}
-                      onValueChange={(v) => setSkills({...skills, embedded_systems: v[0]})}
-                      max={10}
-                      min={1}
-                      step={1}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label>Algorithms & Data Structures</Label>
-                      <span className="text-sm font-medium">{skills.algorithms}/10</span>
-                    </div>
-                    <Slider
-                      value={[skills.algorithms]}
-                      onValueChange={(v) => setSkills({...skills, algorithms: v[0]})}
-                      max={10}
-                      min={1}
-                      step={1}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label>System Design</Label>
-                      <span className="text-sm font-medium">{skills.system_design}/10</span>
-                    </div>
-                    <Slider
-                      value={[skills.system_design]}
-                      onValueChange={(v) => setSkills({...skills, system_design: v[0]})}
-                      max={10}
-                      min={1}
-                      step={1}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          
-          {/* Step 3: Review */}
-          {currentStep === 3 && (
-            <Card className="mb-6 bg-card/50 backdrop-blur-sm border-primary/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-primary" />
-                  Review Your Application
-                </CardTitle>
-                <CardDescription>Please review your information before submitting</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Name</p>
-                    <p className="font-medium">{fullName}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Email</p>
-                    <p className="font-medium">{email}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Phone</p>
-                    <p className="font-medium">{phone || 'Not provided'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Location</p>
-                    <p className="font-medium">{location || 'Not provided'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Role</p>
-                    <p className="font-medium">{selfDescription || 'Not selected'}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Self Rating</p>
-                    <p className="font-medium">{overallSelfRating}/100</p>
-                  </div>
-                </div>
-                <div className="border-t pt-4">
-                  <p className="text-muted-foreground mb-2">Skills Assessment</p>
-                  <div className="grid grid-cols-3 gap-2 text-sm">
-                    <div>Python: <span className="font-medium">{skills.python}/10</span></div>
-                    <div>ML/DL: <span className="font-medium">{skills.ml_deep_learning}/10</span></div>
-                    <div>Signal Proc: <span className="font-medium">{skills.signal_processing}/10</span></div>
-                    <div>Embedded: <span className="font-medium">{skills.embedded_systems}/10</span></div>
-                    <div>Algorithms: <span className="font-medium">{skills.algorithms}/10</span></div>
-                    <div>System Design: <span className="font-medium">{skills.system_design}/10</span></div>
-                  </div>
-                </div>
-                {resumeFile && (
-                  <div className="border-t pt-4">
-                    <p className="text-muted-foreground">Resume</p>
-                    <p className="font-medium">{resumeFile.name}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Navigation Buttons */}
-          <div className="flex justify-between items-center mt-8">
-            {currentStep > 1 && (
-              <Button
-                type="button"
-                variant="outline"
-                size="lg"
-                onClick={() => setCurrentStep(currentStep - 1)}
-              >
-                Previous
-              </Button>
-            )}
-            {currentStep < 3 ? (
-              <Button
-                type="button"
-                size="lg"
-                disabled={currentStep === 1 && (!fullName || !email)}
-                onClick={() => setCurrentStep(currentStep + 1)}
-                className={currentStep === 1 ? "w-full md:w-auto ml-auto" : "ml-auto"}
-              >
-                Next Step
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                size="lg"
-                disabled={submitting}
-                className="ml-auto"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    Submit Application
-                  </>
-                )}
-              </Button>
-            )}
+          {/* Submit Button */}
+          <div className="text-center">
+            <Button
+              type="submit"
+              size="lg"
+              disabled={submitting || !fullName || !email}
+              className="w-full md:w-auto px-12"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Submit Application
+                </>
+              )}
+            </Button>
+            <p className="mt-4 text-xs text-muted-foreground">
+              By submitting this application, you agree to our privacy policy and
+              terms of service. Your information will be kept confidential.
+            </p>
           </div>
-          <p className="mt-4 text-xs text-muted-foreground text-center">
-            By submitting this application, you agree to our privacy policy and
-            terms of service. Your information will be kept confidential.
-          </p>
         </form>
       </div>
     </div>
