@@ -54,6 +54,9 @@ import {
   BookOpen,
   Layers,
   Check,
+  CircuitBoard,
+  Cog,
+  Activity,
 } from "lucide-react";
 
 // Self-description options
@@ -160,6 +163,42 @@ const SKILL_CATEGORIES: Record<string, string[]> = {
     "Model Optimization & Deployment",
     "MLOps",
   ],
+  firmware: [
+    "Embedded C/C++",
+    "RTOS (FreeRTOS, Zephyr)",
+    "Microcontroller Programming (ARM Cortex, ESP32, STM32)",
+    "Low-level Debugging (JTAG, SWD)",
+    "Power Management",
+    "Bootloader Development",
+    "Device Drivers",
+    "Communication Protocols (I2C, SPI, UART, CAN)",
+  ],
+  pcb: [
+    "Schematic Capture",
+    "PCB Layout (Altium, KiCad, Eagle)",
+    "High-Speed Design",
+    "Signal Integrity",
+    "Power Integrity",
+    "DFM (Design for Manufacturing)",
+    "EMC/EMI Compliance",
+    "Multi-layer Board Design",
+  ],
+  mechanical: [
+    "CAD Design (SolidWorks, Fusion 360)",
+    "Wristband/Housing Design",
+    "Injection Molding Design",
+    "3D Printing Prototyping",
+    "Material Selection",
+    "Tolerance Analysis",
+    "IP Rating Design (Waterproofing)",
+    "Ergonomic Design",
+  ],
+  biomedical: [
+    "Biosensor Design",
+    "PPG Signal Processing",
+    "Medical Device Regulations (FDA, CE)",
+    "Biocompatibility",
+  ],
 };
 
 // Category metadata for display
@@ -188,6 +227,26 @@ const CATEGORY_META: Record<string, { label: string; icon: React.ReactNode; colo
     label: "Core Competencies",
     icon: <Cpu className="w-5 h-5" />,
     color: "text-cyan-500",
+  },
+  firmware: {
+    label: "Firmware Engineering",
+    icon: <CircuitBoard className="w-5 h-5" />,
+    color: "text-red-500",
+  },
+  pcb: {
+    label: "PCB Design Engineering",
+    icon: <Layers className="w-5 h-5" />,
+    color: "text-amber-500",
+  },
+  mechanical: {
+    label: "Mechanical Engineering - Wearables",
+    icon: <Cog className="w-5 h-5" />,
+    color: "text-slate-500",
+  },
+  biomedical: {
+    label: "Biomedical Engineering",
+    icon: <Activity className="w-5 h-5" />,
+    color: "text-pink-500",
   },
 };
 
