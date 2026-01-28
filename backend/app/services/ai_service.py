@@ -568,7 +568,7 @@ class AIService:
                         "model": "kimi",
                         "messages": messages,
                         "temperature": temperature,
-                        "max_tokens": 2048
+                        "max_tokens": 4096
                     },
                     timeout=self.timeout
                 )
