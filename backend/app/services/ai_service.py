@@ -549,38 +549,26 @@ class AIService:
             print(f"[AIService] Knowledge base loaded with tracks: {self.knowledge_base.get_available_tracks()}")
 
     async def _call_kimi_with_retry(self, messages: List[Dict[str, str]], temperature: float = 0.7) -> str:
-        """Make a call to the Kimi2 LLM API with retry logic."""
+        """Make a call to the Kimi2 LLM API with retry logic (OpenAI format)."""
         last_error = None
-
-        # Convert messages to a single prompt for llama.cpp
-        prompt = ""
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role == "system":
-                prompt += f"System: {content}\n\n"
-            elif role == "user":
-                prompt += f"User: {content}\n\n"
-            elif role == "assistant":
-                prompt += f"Assistant: {content}\n\n"
-        prompt += "Assistant:"
 
         for attempt in range(self.max_retries):
             try:
-                prompt_preview = prompt[:200] + "..." if len(prompt) > 200 else prompt
+                # Calculate total message content length for logging
+                total_content = sum(len(m.get("content", "")) for m in messages)
                 print(f"[Kimi2] API call attempt {attempt + 1}/{self.max_retries}")
                 print(f"[Kimi2] URL: {self.api_url}, Timeout: {self.timeout}s")
-                print(f"[Kimi2] Prompt length: {len(prompt)} chars, preview: {prompt_preview}")
+                print(f"[Kimi2] Messages: {len(messages)}, Total content: {total_content} chars")
 
                 start_time = time.time()
 
                 response = await self.client.post(
                     self.api_url,
                     json={
-                        "prompt": prompt,
+                        "model": "kimi",
+                        "messages": messages,
                         "temperature": temperature,
-                        "n_predict": 2048,
-                        "stop": ["User:", "\n\nUser"]
+                        "max_tokens": 2048
                     },
                     timeout=self.timeout
                 )
@@ -588,7 +576,7 @@ class AIService:
                 elapsed = time.time() - start_time
                 response.raise_for_status()
                 data = response.json()
-                result = data.get("content", "")
+                result = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                 print(f"[Kimi2] Response received in {elapsed:.1f}s: {len(result)} chars")
                 return result
             except httpx.TimeoutException as e:
