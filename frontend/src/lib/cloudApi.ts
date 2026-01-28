@@ -18,7 +18,7 @@ export const cloudApplicationsApi = {
     unique_qualities?: string;
     resume_filename?: string;
     resume_data?: string;
-    skills?: Record<string, number>;
+    skills?: Array<{ category: string; skill_name: string; self_rating: number }>;
   }) => {
     const response = await fetch('/api/applications', {
       method: 'POST',
