@@ -4,6 +4,7 @@ from sqlalchemy import text
 from app.database import get_db
 import asyncpg
 import uuid
+import json
 from datetime import datetime
 
 router = APIRouter(prefix="/sync", tags=["sync"])
@@ -85,6 +86,34 @@ async def sync_cloud_applications(db: AsyncSession = Depends(get_db)):
                     "updated_at": now
                 }
             )
+
+            # Get the new application ID
+            new_app_result = await db.execute(
+                text("SELECT id FROM applications WHERE email = :email"),
+                {"email": app['email']}
+            )
+            new_app_id = new_app_result.fetchone()[0]
+
+            # Parse and insert skills into skill_assessments table
+            skills_json = app['skills']
+            if skills_json:
+                skills = json.loads(skills_json) if isinstance(skills_json, str) else skills_json
+                for skill in skills:
+                    if skill.get('self_rating', 0) > 0:  # Only save rated skills
+                        await db.execute(
+                            text("""
+                                INSERT INTO skill_assessments (application_id, category, skill_name, self_rating, created_at, updated_at)
+                                VALUES (:app_id, :category, :skill_name, :rating, :now, :now)
+                            """),
+                            {
+                                "app_id": new_app_id,
+                                "category": skill.get('category', 'other'),
+                                "skill_name": skill.get('skill_name'),
+                                "rating": skill.get('self_rating'),
+                                "now": now
+                            }
+                        )
+
             synced += 1
 
         await db.commit()
