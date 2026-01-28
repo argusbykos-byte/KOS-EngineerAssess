@@ -133,10 +133,28 @@ export default function ApplicationsPage() {
     };
   } | null>(null);
 
+  // Sync cloud applications to local database
+  const syncCloudApplications = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/sync/cloud-applications", {
+        method: "POST",
+      });
+      const result = await response.json();
+      if (result.synced > 0) {
+        console.log(`Synced ${result.synced} new applications from cloud`);
+      }
+    } catch (error) {
+      console.error("Error syncing cloud applications:", error);
+    }
+  };
+
   // Fetch applications
   const fetchApplications = async () => {
     setLoading(true);
     try {
+      // Sync cloud applications first
+      await syncCloudApplications();
+
       const params: { status?: string; search?: string; page: number; page_size: number } = {
         page,
         page_size: pageSize,
