@@ -43,6 +43,15 @@ async def sync_cloud_applications(db: AsyncSession = Depends(get_db)):
             token = uuid.uuid4().hex + uuid.uuid4().hex[:32]
             now = datetime.utcnow()
 
+            # Map available_for_trial boolean/string to availability enum
+            available = app['available_for_trial']
+            if available is True or available == 'true' or available == 'yes':
+                availability = 'yes'
+            elif available is False or available == 'false' or available == 'no':
+                availability = 'no'
+            else:
+                availability = 'need_to_discuss'
+
             # Insert into local database with all NOT NULL fields
             await db.execute(
                 text("""
@@ -71,7 +80,7 @@ async def sync_cloud_applications(db: AsyncSession = Depends(get_db)):
                     "resume_filename": app['resume_filename'],
                     "token": token,
                     "status": app['status'] or 'pending',
-                    "availability": app['available_for_trial'] or 'need_to_discuss',
+                    "availability": availability,
                     "created_at": app['created_at'] or now,
                     "updated_at": now
                 }
