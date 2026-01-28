@@ -94,3 +94,28 @@ async def sync_cloud_applications(db: AsyncSession = Depends(get_db)):
 
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@router.delete("/cloud-application/{email}")
+async def delete_cloud_application(email: str, db: AsyncSession = Depends(get_db)):
+    """Delete application from both local SQLite and Neon cloud databases by email"""
+    try:
+        # Delete from local SQLite - first skill_assessments, then applications
+        await db.execute(
+            text("DELETE FROM skill_assessments WHERE application_id IN (SELECT id FROM applications WHERE email = :email)"),
+            {"email": email}
+        )
+        await db.execute(
+            text("DELETE FROM applications WHERE email = :email"),
+            {"email": email}
+        )
+        await db.commit()
+
+        # Delete from Neon cloud_applications
+        pg_conn = await asyncpg.connect(NEON_URL)
+        await pg_conn.execute("DELETE FROM cloud_applications WHERE email = $1", email)
+        await pg_conn.close()
+
+        return {"success": True, "deleted_email": email}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

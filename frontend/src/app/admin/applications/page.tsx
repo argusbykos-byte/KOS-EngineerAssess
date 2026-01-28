@@ -206,17 +206,20 @@ export default function ApplicationsPage() {
     }
   };
 
-  // Handle delete with confirmation
+  // Handle delete with confirmation - deletes from both local and cloud
   const handleDelete = async (app: ApplicationListItem) => {
     const confirmed = window.confirm(
-      `Are you sure you want to delete the application for ${app.full_name} (${app.email})?\n\nThis action cannot be undone.`
+      `Are you sure you want to delete the application for ${app.full_name} (${app.email})?\n\nThis will delete from both local and cloud databases. This action cannot be undone.`
     );
 
     if (!confirmed) return;
 
     setDeletingId(app.id);
     try {
-      await applicationsApi.delete(app.id);
+      // Delete from both local SQLite and Neon cloud_applications
+      await fetch(`http://localhost:8000/api/sync/cloud-application/${encodeURIComponent(app.email)}`, {
+        method: "DELETE",
+      });
       fetchApplications();
     } catch (error) {
       console.error("Error deleting application:", error);
