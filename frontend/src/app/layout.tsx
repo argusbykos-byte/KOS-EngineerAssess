@@ -14,8 +14,22 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "KOS-EngineerAssess - AI-Powered Engineering Assessment",
-  description: "AI-powered engineering candidate assessment platform by KOS AI",
+  title: "KOS Quest - Join the Mission",
+  description: "Join 50 elite engineers solving early death through AI and biomedical innovation. KOS Inc - Stanford Research Park, Palo Alto.",
+  icons: {
+    icon: [
+      { url: "/favicon.png", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
+  openGraph: {
+    title: "KOS Quest - Join the Mission",
+    description: "Join 50 elite engineers solving early death through AI and biomedical innovation.",
+    siteName: "KOS Quest",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
