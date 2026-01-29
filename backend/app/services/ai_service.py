@@ -2313,6 +2313,30 @@ Please analyze this candidate and provide your assessment as JSON."""
                 except json.JSONDecodeError:
                     pass
 
+            # Try to repair incomplete JSON
+            if not response.endswith('}'):
+                # Count opening and closing braces/brackets
+                open_braces = response.count('{') - response.count('}')
+                open_brackets = response.count('[') - response.count(']')
+
+                # Try to close the JSON
+                repaired = response.rstrip()
+                # Remove any trailing incomplete key/value
+                if repaired.endswith(','):
+                    repaired = repaired[:-1]
+                if repaired.endswith('"'):
+                    repaired = repaired + ': null'
+
+                # Add missing closing brackets and braces
+                repaired += ']' * open_brackets + '}' * open_braces
+
+                try:
+                    analysis = json.loads(repaired)
+                    print(f"[AIService] Successfully repaired and parsed incomplete JSON")
+                    return self._validate_analysis(analysis)
+                except json.JSONDecodeError:
+                    pass
+
             print(f"[AIService] Failed to parse application analysis, using defaults")
             return self._get_default_analysis()
 
