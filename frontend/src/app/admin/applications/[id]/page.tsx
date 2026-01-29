@@ -260,10 +260,11 @@ export default function ApplicationDetailPage() {
     fetchApplication();
   }, [applicationId]);
 
-  // Format date helper
+  // Format date helper - converts UTC to Pacific Time
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "N/A";
-    return formatPacificDate(dateStr, {
+    return new Date(dateStr).toLocaleString('en-US', {
+      timeZone: 'America/Los_Angeles',
       month: "short",
       day: "numeric",
       year: "numeric",
