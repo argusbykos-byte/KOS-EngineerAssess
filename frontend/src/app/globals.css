@@ -276,3 +276,24 @@
 .backdrop-premium {
   @apply bg-black/60 backdrop-blur-sm;
 }
+
+/* KOS Quest Typing Animation */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.typing-cursor::after {
+  content: "█";
+  animation: blink 1s step-end infinite;
+  color: #14B8A6;
+}
+
+/* Number glow effect */
+.number-glow {
+  text-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
+}
+
+.money-glow {
+  text-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
