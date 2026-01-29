@@ -30,7 +30,7 @@ export default function QuestPage() {
       }
     }, isDeleting ? 50 : 100);
     return () => clearTimeout(timeout);
-  }, [displayText, isDeleting, currentRole]);
+  }, [displayText, isDeleting, currentRole, roles]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
@@ -194,7 +194,8 @@ export default function QuestPage() {
           </Link>
 
           <p className="mt-8 text-white/40 text-sm font-mono">
-            // Your journey starts here
+            {/* code-style comment display */}
+            {"// Your journey starts here"}
           </p>
         </div>
       </section>
