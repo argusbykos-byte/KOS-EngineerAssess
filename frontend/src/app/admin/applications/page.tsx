@@ -42,7 +42,6 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { formatPacificDate } from "@/lib/utils";
 
 // Status badge configuration
 const STATUS_CONFIG: Record<
@@ -248,12 +247,15 @@ export default function ApplicationsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  // Format date helper
+  // Format date helper - converts UTC to Pacific Time
   const formatDate = (dateStr: string) => {
-    return formatPacificDate(dateStr, {
+    return new Date(dateStr).toLocaleString('en-US', {
+      timeZone: 'America/Los_Angeles',
       month: "short",
       day: "numeric",
       year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
     });
   };
 
